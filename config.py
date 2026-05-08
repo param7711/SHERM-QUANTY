@@ -27,6 +27,13 @@ MIN_DTE_COMMODITY        = 5
 SCHEDULE_TIMES          = ['09:30', '13:00', '15:20']
 COMMODITY_EVENING_CHECK = '23:00'
 
+# Live scanner (continuous intraday mode)
+LIVE_SCAN_INTERVAL_SECS = 300      # 5-minute scan cadence during market hours
+NSE_OPEN_TIME           = '09:15'  # NSE regular session open
+NSE_CLOSE_TIME          = '15:30'  # NSE regular session close
+MCX_OPEN_TIME           = '09:00'  # MCX opens same as NSE
+MCX_CLOSE_TIME          = '23:30'  # MCX evening session close
+
 # Risk parameters
 MAX_POSITION_PCT       = 0.07
 MAX_POSITIONS_TOTAL    = 8

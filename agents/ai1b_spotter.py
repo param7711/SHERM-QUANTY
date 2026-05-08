@@ -1,7 +1,8 @@
 """
 Step 8 — AI 1B Spotter.
 Reads the Edge Library and scans for signal conditions.
-Runs 3x daily at scheduled times. Stateless between runs.
+Supports both scheduled (3x daily) and live continuous scanning modes.
+In live_mode=True: fetches fresh daily bars from yfinance before each scan.
 """
 
 import os
@@ -46,8 +47,9 @@ ALL_INSTRUMENTS = (
 
 
 class AI1B_Spotter:
-    def __init__(self, db_path: str = DB_PATH):
-        self.db_path = db_path
+    def __init__(self, db_path: str = DB_PATH, live_mode: bool = False):
+        self.db_path   = db_path
+        self.live_mode = live_mode
 
     def scan(self) -> list:
         """
@@ -83,11 +85,13 @@ class AI1B_Spotter:
 
     def _compute_live_features(self) -> dict:
         """
-        Load recent OHLCV and compute all features for each instrument.
-        In live: download via yfinance. In backtest/sandbox: use parquet data.
-        Returns dict: {instrument_name: features_dataframe}
+        Returns dict {instrument_name: features_dataframe}.
+        live_mode=True: refreshes daily bars from yfinance before computing features.
+        live_mode=False (sandbox): reads cached parquets as-is.
         """
-        from feature_definitions import compute_features_for_instrument
+        if self.live_mode:
+            return self._fetch_live_features()
+
         features = {}
         for inst in ALL_INSTRUMENTS:
             path = f'data/processed/{inst}_features.parquet'
@@ -99,6 +103,72 @@ class AI1B_Spotter:
                 features[inst] = df
             except Exception:
                 continue
+        return features
+
+    def _fetch_live_features(self) -> dict:
+        """
+        Live mode: download the last 60 days of daily OHLCV from yfinance,
+        merge with existing raw parquet (keeps full history for feature windows),
+        recompute features, and return the updated dataframes.
+        Falls back to cached feature parquet for any instrument that fails.
+        """
+        import yfinance as yf
+        from data.download_data import YFINANCE_TICKERS
+        from data.compute_features import compute_underlying_features
+
+        features = {}
+        for inst in ALL_INSTRUMENTS:
+            ticker    = YFINANCE_TICKERS.get(inst)
+            raw_path  = f'data/raw/{inst}_daily.parquet'
+            feat_path = f'data/processed/{inst}_features.parquet'
+
+            if not ticker:
+                if os.path.exists(feat_path):
+                    df = pd.read_parquet(feat_path)
+                    df.index = pd.to_datetime(df.index)
+                    features[inst] = df
+                continue
+
+            try:
+                fresh = yf.download(ticker, period='60d', progress=False, auto_adjust=True)
+                if fresh is None or fresh.empty:
+                    raise ValueError("empty response")
+                if isinstance(fresh.columns, pd.MultiIndex):
+                    fresh.columns = fresh.columns.get_level_values(0)
+                fresh = fresh.rename(columns={c: c.lower() for c in fresh.columns})
+                fresh.index = pd.to_datetime(fresh.index).normalize()
+                fresh.index.name = 'date'
+                fresh = fresh[['open', 'high', 'low', 'close', 'volume']].dropna(subset=['close'])
+
+                if os.path.exists(raw_path):
+                    existing = pd.read_parquet(raw_path)
+                    merged = (
+                        pd.concat([existing, fresh])
+                        .reset_index()
+                        .drop_duplicates(subset='date', keep='last')
+                        .set_index('date')
+                        .sort_index()
+                    )
+                else:
+                    merged = fresh
+
+                # Persist updated raw data so next scan starts from here
+                merged.to_parquet(raw_path)
+
+                feat_df = compute_underlying_features(merged, inst)
+                feat_df.index = pd.to_datetime(feat_df.index)
+                features[inst] = feat_df
+
+            except Exception as e:
+                print(f"  [AI1B live] {inst}: yfinance error ({e}), using cache")
+                if os.path.exists(feat_path):
+                    try:
+                        df = pd.read_parquet(feat_path)
+                        df.index = pd.to_datetime(df.index)
+                        features[inst] = df
+                    except Exception:
+                        pass
+
         return features
 
     def _regime_matches(self, edge: dict, current_regime: dict) -> bool:
