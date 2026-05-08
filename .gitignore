@@ -6,3 +6,9 @@ __pycache__/
 
 # Raw market data — regenerated via `python data/download_data.py`
 data/raw/*.parquet
+
+# Processed feature parquets — regenerated via `python data/compute_features.py`
+data/processed/*.parquet
+
+# Generated chart outputs
+outputs/charts/*.png
