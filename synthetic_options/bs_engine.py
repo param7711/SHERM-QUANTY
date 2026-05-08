@@ -73,15 +73,18 @@ def black_scholes_price(S: float, K: float, T: float, r: float,
     if option_type == 'call':
         price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
         delta = norm.cdf(d1)
+        # Call theta: -Sφ(d1)σ/(2√T) - rKe^(-rT)Φ(d2)
+        theta = (-(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T))
+                 - r * K * np.exp(-r * T) * norm.cdf(d2)) / 252
     elif option_type == 'put':
         price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
         delta = -norm.cdf(-d1)
+        # Put theta: -Sφ(d1)σ/(2√T) + rKe^(-rT)Φ(-d2)   (note + sign on second term)
+        theta = (-(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T))
+                 + r * K * np.exp(-r * T) * norm.cdf(-d2)) / 252
     else:
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
 
-    theta = (-(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T))
-             - r * K * np.exp(-r * T) * norm.cdf(d2 if option_type == 'call' else -d2)
-             ) / 252
     gamma = norm.pdf(d1) / (S * sigma * np.sqrt(T))
 
     return {
