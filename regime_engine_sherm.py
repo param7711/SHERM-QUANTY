@@ -237,7 +237,7 @@ def _fit_and_classify(X: np.ndarray,
     model = hmm.GaussianHMM(
         n_components=N_STATES,
         covariance_type='full',
-        n_iter=1000,
+        n_iter=2000,
         random_state=42,
         init_params='stmc',
         params='stmc',
