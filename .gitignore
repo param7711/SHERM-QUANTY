@@ -12,3 +12,8 @@ data/processed/*.parquet
 
 # Generated chart outputs
 outputs/charts/*.png
+
+# RL runtime state — regenerated as the system accumulates trades
+database/rl_*.npz
+database/rl_*.pkl
+database/rl_*.json
