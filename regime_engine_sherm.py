@@ -206,7 +206,16 @@ def _generate_synthetic_data(start: str) -> tuple[pd.Series, pd.Series]:
 # ---------------------------------------------------------------------------
 
 def _build_feature_matrix(nifty_close: pd.Series,
-                           vix_close: pd.Series) -> tuple[np.ndarray, pd.DatetimeIndex]:
+                           vix_close: pd.Series,
+                           train_end: str = TRAIN_END
+                           ) -> tuple[np.ndarray, pd.DatetimeIndex, StandardScaler]:
+    """
+    Build the 3-feature HMM input matrix and standardize it.
+    StandardScaler is fitted on training rows only (date <= train_end) so that
+    OOS data cannot leak into the fit. The full matrix is then transformed
+    with the same scaler. The scaler is returned so callers can reuse it for
+    new rows (e.g. update_regime() when appending fresh data).
+    """
     nifty_log_ret = np.log(nifty_close / nifty_close.shift(1))
     nifty_vol_5d  = nifty_log_ret.rolling(5).std()
     vix_level     = vix_close / 100
@@ -215,12 +224,17 @@ def _build_feature_matrix(nifty_close: pd.Series,
         'log_ret':   nifty_log_ret,
         'vol_5d':    nifty_vol_5d,
         'vix_level': vix_level,
-    })
-    df = df.dropna()
+    }).dropna()
 
-    X     = df[['log_ret', 'vol_5d', 'vix_level']].values
+    X_raw = df[['log_ret', 'vol_5d', 'vix_level']].values
     dates = df.index
-    return X, dates
+
+    train_mask = dates <= pd.Timestamp(train_end)
+    scaler = StandardScaler()
+    scaler.fit(X_raw[train_mask])
+    X_scaled = scaler.transform(X_raw)
+
+    return X_scaled, dates, scaler
 
 
 # ---------------------------------------------------------------------------
@@ -231,24 +245,15 @@ def _fit_and_classify(X: np.ndarray,
                       dates: pd.DatetimeIndex,
                       nifty_close: pd.Series,
                       vix_close: pd.Series) -> pd.DataFrame:
-    global _feature_scaler
-
+    """
+    X is already standardized by _build_feature_matrix (scaler fit on training rows only).
+    """
     train_mask = dates <= pd.Timestamp(TRAIN_END)
     X_train    = X[train_mask]
     X_oos      = X[~train_mask]
 
     print(f"  Training on {train_mask.sum()} rows (up to {TRAIN_END})")
     print(f"  OOS rows: {(~train_mask).sum()}")
-
-    # Scale: fit on training data only so OOS cannot leak into the scaler
-    _feature_scaler = StandardScaler()
-    X_train_s = _feature_scaler.fit_transform(X_train)
-    X_oos_s   = _feature_scaler.transform(X_oos) if len(X_oos) > 0 else X_oos
-
-    print(f"  Feature scales (train means): "
-          f"log_ret={_feature_scaler.mean_[0]:.5f}  "
-          f"vol_5d={_feature_scaler.mean_[1]:.5f}  "
-          f"vix={_feature_scaler.mean_[2]:.4f}")
 
     model = hmm.GaussianHMM(
         n_components=N_STATES,
@@ -258,7 +263,7 @@ def _fit_and_classify(X: np.ndarray,
         init_params='stmc',
         params='stmc',
     )
-    model.fit(X_train_s)
+    model.fit(X_train)
     print(f"  HMM converged: {model.monitor_.converged}")
 
     # State labeling: sort states by mean log return (ascending)
@@ -279,12 +284,12 @@ def _fit_and_classify(X: np.ndarray,
               f"vol={model.means_[raw, 1]:.5f}  "
               f"vix={model.means_[raw, 2]:.4f}")
 
-    # Classify: in-sample, then OOS (both use scaled features)
-    states_train = model.predict(X_train_s)
-    probs_train  = model.predict_proba(X_train_s)
-    if len(X_oos_s) > 0:
-        states_oos = model.predict(X_oos_s)
-        probs_oos  = model.predict_proba(X_oos_s)
+    # Classify: in-sample, then OOS (X is already standardized upstream)
+    states_train = model.predict(X_train)
+    probs_train  = model.predict_proba(X_train)
+    if len(X_oos) > 0:
+        states_oos = model.predict(X_oos)
+        probs_oos  = model.predict_proba(X_oos)
     else:
         states_oos = np.array([], dtype=int)
         probs_oos  = np.empty((0, N_STATES))
@@ -468,10 +473,11 @@ def update_regime():
 
     # Full rebuild: re-fits HMM + scaler on 2010-TRAIN_END, classifies to today
     print(f"  Fetching from {DATA_START} to rebuild with latest data ...")
-    nifty_full, vix_full  = _load_raw_data(start=DATA_START)
-    X_full, dates_full    = _build_feature_matrix(nifty_full, vix_full)
-    new_df                = _fit_and_classify(X_full, dates_full, nifty_full, vix_full)
-    # _feature_scaler is refreshed inside _fit_and_classify (module-level)
+    nifty_full, vix_full              = _load_raw_data(start=DATA_START)
+    X_full, dates_full, scaler        = _build_feature_matrix(nifty_full, vix_full)
+    global _feature_scaler
+    _feature_scaler                   = scaler
+    new_df                            = _fit_and_classify(X_full, dates_full, nifty_full, vix_full)
 
     new_rows = new_df[new_df.index > last_date]
     if len(new_rows) == 0:
@@ -492,10 +498,13 @@ def build_regime_history():
     print("=== Sherm Quanty Regime Engine — Build (Step 0) ===\n")
     print("[1/4] Loading market data ...")
     nifty_close, vix_close = _load_raw_data()
-    using_synthetic = not (os.path.exists('data/raw/NSEI_daily.csv'))
+    # Real Nifty has been above 10,000 since 2017; synthetic series start at 5,200.
+    using_synthetic = not (len(nifty_close) > 0 and nifty_close.max() > 10000)
 
     print("\n[2/4] Building feature matrix ...")
-    X, dates = _build_feature_matrix(nifty_close, vix_close)
+    X, dates, scaler = _build_feature_matrix(nifty_close, vix_close)
+    global _feature_scaler
+    _feature_scaler  = scaler
     print(f"  Feature matrix: {X.shape}  "
           f"Range: {dates[0].date()} → {dates[-1].date()}")
 
