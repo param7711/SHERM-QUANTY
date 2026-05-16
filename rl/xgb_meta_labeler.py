@@ -2,16 +2,21 @@
 Step 14 — XGB Meta-Labeler.
 Predicts whether a given signal will be profitable.
 Shadow mode until 150 trades; filtering authority after that.
+State persists across restarts: model saved to database/rl_meta_labeler.pkl.
 """
 
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import json
 import numpy as np
 import pandas as pd
 
 from config import META_LABELER_MIN_TRADES, META_LABELER_THRESHOLD
+
+_MODEL_PATH = 'database/rl_meta_labeler.pkl'
+_COUNT_PATH = 'database/rl_meta_labeler_count.json'
 
 
 class XGBMetaLabeler:
@@ -21,6 +26,7 @@ class XGBMetaLabeler:
     Retrained weekly once minimum trade count reached.
 
     Activates: shadow mode immediately. Filtering authority after 150 trades.
+    State persists to disk so accumulated learning survives restarts.
     """
 
     MIN_TRADES_SHADOW   = 0
@@ -37,8 +43,32 @@ class XGBMetaLabeler:
     ]
 
     def __init__(self):
-        self.model = None
+        self.model       = None
         self.trade_count = 0
+        self._load_state()
+
+    def _load_state(self):
+        """Load persisted model and trade count if available."""
+        try:
+            if os.path.exists(_MODEL_PATH) and os.path.exists(_COUNT_PATH):
+                import joblib
+                self.model = joblib.load(_MODEL_PATH)
+                with open(_COUNT_PATH) as f:
+                    self.trade_count = json.load(f).get('trade_count', 0)
+        except Exception:
+            self.model       = None
+            self.trade_count = 0
+
+    def _save_state(self):
+        """Persist model and trade count to disk."""
+        try:
+            import joblib
+            os.makedirs(os.path.dirname(_MODEL_PATH), exist_ok=True)
+            joblib.dump(self.model, _MODEL_PATH)
+            with open(_COUNT_PATH, 'w') as f:
+                json.dump({'trade_count': self.trade_count}, f)
+        except Exception:
+            pass
 
     def predict(self, signal: dict) -> float:
         """Returns probability (0–1) that signal will be profitable."""
@@ -63,6 +93,7 @@ class XGBMetaLabeler:
         )
         self.model.fit(X, y)
         self.trade_count = len(trade_history)
+        self._save_state()
 
     def _extract_features(self, signal: dict) -> list:
         regime_map = {

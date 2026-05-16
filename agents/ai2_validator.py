@@ -19,13 +19,14 @@ from shadow_ledger import ShadowLedger
 class AI2_Validator:
     """
     Gates AI 1B signals. Returns APPROVED or REJECTED for each signal.
-    Uses risk_governor as hard gate + soft filters for edge quality.
-    In MVP: rule-based only. RL layer added in Step 14.
+    Hard gate: RiskGovernor. Soft filters: decay check, signal strength.
+    RL gate: XGBMetaLabeler prediction (shadow until 150 trades, then active).
     """
 
-    def __init__(self):
+    def __init__(self, meta_labeler=None):
         self.risk_governor = RiskGovernor()
         self.shadow_ledger = ShadowLedger()
+        self.meta_labeler  = meta_labeler
 
     def validate(self, signals: list) -> list:
         approved = []
@@ -56,6 +57,14 @@ class AI2_Validator:
         # Signal strength check
         if not self._meets_signal_strength(signal):
             return 'REJECTED', 'SIGNAL_STRENGTH_INSUFFICIENT'
+
+        # Meta-labeler gate (shadow until 150 trades, then active filtering)
+        if self.meta_labeler is not None:
+            score = self.meta_labeler.predict(signal)
+            signal['meta_labeler_score'] = score   # stored for AI3/bandit context
+            if self.meta_labeler.trade_count >= self.meta_labeler.MIN_TRADES_ACTIVATE:
+                if score < self.meta_labeler.THRESHOLD:
+                    return 'REJECTED', f'META_SCORE_{score:.3f}'
 
         return 'APPROVED', 'OK'
 

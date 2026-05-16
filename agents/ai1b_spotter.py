@@ -47,9 +47,11 @@ ALL_INSTRUMENTS = (
 
 
 class AI1B_Spotter:
-    def __init__(self, db_path: str = DB_PATH, live_mode: bool = False):
-        self.db_path   = db_path
-        self.live_mode = live_mode
+    def __init__(self, db_path: str = DB_PATH, live_mode: bool = False,
+                 bayesian_optimizer=None):
+        self.db_path            = db_path
+        self.live_mode          = live_mode
+        self.bayesian_optimizer = bayesian_optimizer
 
     def scan(self) -> list:
         """
@@ -204,21 +206,32 @@ class AI1B_Spotter:
         return False, 0.0
 
     def _evaluate_condition(self, edge: dict, feat: pd.Series) -> bool:
-        """Evaluate a seeded edge trigger condition against latest feature row."""
+        """
+        Evaluate a seeded edge trigger condition against latest feature row.
+        Thresholds for SEED-001/002/003/006 are read from the Bayesian optimizer
+        when available; hardcoded defaults are used in shadow mode or before
+        the optimizer has enough data.
+        """
+        bo  = self.bayesian_optimizer
         eid = edge['edge_id']
+
         if eid == 'SEED-001':
-            return feat['z_21d'] < -2.0 or feat['z_21d'] > 2.0
+            z = bo.get_current_threshold('z_21d_threshold') if bo else -2.0
+            return feat['z_21d'] < z or feat['z_21d'] > abs(z)
         elif eid == 'SEED-002':
-            return feat['gap_pct'] < -0.01 and feat['gap_unfilled_eod'] == 1
+            g = bo.get_current_threshold('gap_pct_threshold') if bo else -0.01
+            return feat['gap_pct'] < g and feat['gap_unfilled_eod'] == 1
         elif eid == 'SEED-003':
-            return feat['rsi_2'] < 10
+            r = bo.get_current_threshold('rsi_2_threshold') if bo else 10
+            return feat['rsi_2'] < r
         elif eid == 'SEED-004':
             return (feat['mom_5d'] > 0 and feat['rsi_14'] > 55
                     and feat['vol_expanding'] == 0)
         elif eid == 'SEED-005':
             return abs(feat.get('synthetic_xauusd_z_21d', 0.0)) > 2.0
         elif eid == 'SEED-006':
-            return abs(feat['z_21d']) > 1.8
+            z = abs(bo.get_current_threshold('z_21d_currency')) if bo else 1.8
+            return abs(feat['z_21d']) > z
         return False
 
     def _build_signal(self, edge: dict, features: dict,

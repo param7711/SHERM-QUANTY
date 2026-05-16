@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import yfinance as yf
 from hmmlearn import hmm
+from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings('ignore')
 
@@ -36,6 +37,9 @@ REGIME_COLORS = {
     'L_BEAR':   '#FFB6C1',
     'H_BEAR':   '#8B0000',
 }
+
+# Set once when HMM is fitted; reused by update_regime() for OOS rows
+_feature_scaler: StandardScaler | None = None
 
 # ---------------------------------------------------------------------------
 # Data loading — tries yfinance, falls back to local CSV
@@ -227,12 +231,24 @@ def _fit_and_classify(X: np.ndarray,
                       dates: pd.DatetimeIndex,
                       nifty_close: pd.Series,
                       vix_close: pd.Series) -> pd.DataFrame:
+    global _feature_scaler
+
     train_mask = dates <= pd.Timestamp(TRAIN_END)
     X_train    = X[train_mask]
     X_oos      = X[~train_mask]
 
     print(f"  Training on {train_mask.sum()} rows (up to {TRAIN_END})")
     print(f"  OOS rows: {(~train_mask).sum()}")
+
+    # Scale: fit on training data only so OOS cannot leak into the scaler
+    _feature_scaler = StandardScaler()
+    X_train_s = _feature_scaler.fit_transform(X_train)
+    X_oos_s   = _feature_scaler.transform(X_oos) if len(X_oos) > 0 else X_oos
+
+    print(f"  Feature scales (train means): "
+          f"log_ret={_feature_scaler.mean_[0]:.5f}  "
+          f"vol_5d={_feature_scaler.mean_[1]:.5f}  "
+          f"vix={_feature_scaler.mean_[2]:.4f}")
 
     model = hmm.GaussianHMM(
         n_components=N_STATES,
@@ -242,7 +258,7 @@ def _fit_and_classify(X: np.ndarray,
         init_params='stmc',
         params='stmc',
     )
-    model.fit(X_train)
+    model.fit(X_train_s)
     print(f"  HMM converged: {model.monitor_.converged}")
 
     # State labeling: sort states by mean log return (ascending)
@@ -263,12 +279,12 @@ def _fit_and_classify(X: np.ndarray,
               f"vol={model.means_[raw, 1]:.5f}  "
               f"vix={model.means_[raw, 2]:.4f}")
 
-    # Classify: in-sample, then OOS
-    states_train = model.predict(X_train)
-    probs_train  = model.predict_proba(X_train)
-    if len(X_oos) > 0:
-        states_oos = model.predict(X_oos)
-        probs_oos  = model.predict_proba(X_oos)
+    # Classify: in-sample, then OOS (both use scaled features)
+    states_train = model.predict(X_train_s)
+    probs_train  = model.predict_proba(X_train_s)
+    if len(X_oos_s) > 0:
+        states_oos = model.predict(X_oos_s)
+        probs_oos  = model.predict_proba(X_oos_s)
     else:
         states_oos = np.array([], dtype=int)
         probs_oos  = np.empty((0, N_STATES))
@@ -450,10 +466,12 @@ def update_regime():
         print("  Regime history already up to date.")
         return
 
+    # Full rebuild: re-fits HMM + scaler on 2010-TRAIN_END, classifies to today
     print(f"  Fetching from {DATA_START} to rebuild with latest data ...")
     nifty_full, vix_full  = _load_raw_data(start=DATA_START)
     X_full, dates_full    = _build_feature_matrix(nifty_full, vix_full)
     new_df                = _fit_and_classify(X_full, dates_full, nifty_full, vix_full)
+    # _feature_scaler is refreshed inside _fit_and_classify (module-level)
 
     new_rows = new_df[new_df.index > last_date]
     if len(new_rows) == 0:

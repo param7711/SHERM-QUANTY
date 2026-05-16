@@ -34,6 +34,7 @@ from slot_system import SlotSystem
 from risk_governor import RiskGovernor
 from rl.xgb_meta_labeler import XGBMetaLabeler
 from rl.contextual_bandit import ContextualBandit
+from rl.bayesian_optimizer import BayesianThresholdOptimizer
 
 # ---------------------------------------------------------------------------
 # IST timezone (UTC+5:30 — no external tz library needed)
@@ -78,15 +79,19 @@ def _is_mcx_open(dt: datetime) -> bool:
 
 slot_system    = SlotSystem()
 risk_governor  = RiskGovernor()
-# live_mode=True: AI 1B fetches fresh daily bars from yfinance before each scan
-ai1b           = AI1B_Spotter(live_mode=True)
-ai2            = AI2_Validator()
-ai3            = AI3_Scorer()
-ai4            = AI4_Executor()
-ai5            = AI5_FeedbackLoop()
-portfolio_ctor = PortfolioConstruction()
+
+# RL singletons — load persisted state from disk if available
+bayesian_opt   = BayesianThresholdOptimizer()
 meta_labeler   = XGBMetaLabeler()
 bandit         = ContextualBandit()
+
+# Agents — RL objects injected so all components share the same instances
+ai1b           = AI1B_Spotter(live_mode=True, bayesian_optimizer=bayesian_opt)
+ai2            = AI2_Validator(meta_labeler=meta_labeler)
+ai3            = AI3_Scorer(bandit=bandit)
+ai4            = AI4_Executor()
+ai5            = AI5_FeedbackLoop(bandit=bandit, bayesian_optimizer=bayesian_opt)
+portfolio_ctor = PortfolioConstruction()
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +191,9 @@ def _run_daily_reset(today: str):
 def _execute_pipeline(signals: list, tag: str):
     """
     Run AI 2 → portfolio construction → AI 3 → AI 4 for a batch of signals.
-    Updates slot system and risk governor.  Returns count of fills.
+    bandit_action and bandit_context are stored in the slot so AI 5 can update
+    the bandit when the trade closes.
+    Returns count of fills.
     """
     if not signals:
         return 0
@@ -197,10 +204,18 @@ def _execute_pipeline(signals: list, tag: str):
 
     fills = 0
     for signal in sized:
+        if signal.get('recommended_lots', 1) == 0:
+            continue   # bandit said SKIP
         result = ai4.execute_signal(signal)
         status = result.get('status', '')
         if status in ('FILLED', 'SIMULATED_FILL'):
-            slot_system.add_slot(result['order_id'], signal)
+            # Carry bandit context into the slot for later RL update
+            slot_data = {
+                **signal,
+                'bandit_action':  signal.get('bandit_action', 'MEDIUM'),
+                'bandit_context': signal.get('bandit_context', []),
+            }
+            slot_system.add_slot(result['order_id'], slot_data)
             risk_governor.record_position_opened(result['order_id'], signal)
             fills += 1
 
@@ -233,15 +248,20 @@ def run_live():
             _run_morning_regime(today)
 
             # Monitor open positions first
-            open_positions = list(slot_system.active_slots.values())
-            if open_positions:
-                ai5.monitor_positions(open_positions, {'source': 'live_scan'})
+            try:
+                open_positions = list(slot_system.active_slots.values())
+                if open_positions:
+                    ai5.monitor_positions(open_positions, {'source': 'live_scan'})
+            except Exception as e:
+                print(f"[{ts}] WARN monitor_positions: {type(e).__name__}: {e}")
 
             # Scan → deduplicate → execute
-            # _dedup_signals marks keys immediately; no separate _mark_executed needed
-            signals  = ai1b.scan()
-            new_sigs = _dedup_signals(signals)
-            _execute_pipeline(new_sigs, 'nse')
+            try:
+                signals  = ai1b.scan()
+                new_sigs = _dedup_signals(signals)
+                _execute_pipeline(new_sigs, 'nse')
+            except Exception as e:
+                print(f"[{ts}] WARN pipeline: {type(e).__name__}: {e}")
 
             # Pre-close: Friday meta-labeler retrain (only after 15:00)
             if _minutes_since_midnight(now) >= _parse_time('15:00'):
@@ -261,7 +281,10 @@ def run_live():
                 ]
                 if commodity_positions:
                     print(f"[{ts}] MCX evening check — {len(commodity_positions)} positions")
-                    ai5.monitor_positions(commodity_positions, {'source': 'mcx_evening'})
+                    try:
+                        ai5.monitor_positions(commodity_positions, {'source': 'mcx_evening'})
+                    except Exception as e:
+                        print(f"[{ts}] WARN mcx_monitor: {type(e).__name__}: {e}")
 
         time.sleep(LIVE_SCAN_INTERVAL_SECS)
 

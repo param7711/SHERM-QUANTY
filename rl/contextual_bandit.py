@@ -2,6 +2,7 @@
 Step 14 — Contextual Bandit (LinUCB).
 Selects position size: SKIP / SMALL / MEDIUM / LARGE.
 Shadow mode until 200 trades; sizing authority after that.
+State persists across restarts: A/b matrices saved to database/rl_bandit_state.npz.
 """
 
 import os
@@ -12,6 +13,8 @@ import numpy as np
 
 from config import BANDIT_MIN_TRADES, MAX_POSITION_PCT
 
+_STATE_PATH = 'database/rl_bandit_state.npz'
+
 
 class ContextualBandit:
     """
@@ -20,6 +23,7 @@ class ContextualBandit:
 
     Activates: shadow mode immediately. Sizing authority after 200 trades.
     Hard cap: LARGE never exceeds MAX_POSITION_PCT regardless of bandit output.
+    State persists to disk so accumulated learning survives restarts.
     """
 
     ACTIONS          = ['SKIP', 'SMALL', 'MEDIUM', 'LARGE']
@@ -32,6 +36,34 @@ class ContextualBandit:
         self.trade_count = 0
         self.A = {a: np.identity(n_features)  for a in self.ACTIONS}
         self.b = {a: np.zeros(n_features)     for a in self.ACTIONS}
+        self._load_state()
+
+    def _load_state(self):
+        """Load persisted A/b matrices and trade count if available."""
+        try:
+            if os.path.exists(_STATE_PATH):
+                data = np.load(_STATE_PATH)
+                self.trade_count = int(data['trade_count'])
+                for a in self.ACTIONS:
+                    self.A[a] = data[f'A_{a}']
+                    self.b[a] = data[f'b_{a}']
+        except Exception:
+            # Reset to defaults on any load error
+            self.trade_count = 0
+            self.A = {a: np.identity(self.n_features)  for a in self.ACTIONS}
+            self.b = {a: np.zeros(self.n_features)     for a in self.ACTIONS}
+
+    def _save_state(self):
+        """Persist A/b matrices and trade count to disk."""
+        try:
+            os.makedirs(os.path.dirname(_STATE_PATH), exist_ok=True)
+            save_dict = {'trade_count': np.array(self.trade_count)}
+            for a in self.ACTIONS:
+                save_dict[f'A_{a}'] = self.A[a]
+                save_dict[f'b_{a}'] = self.b[a]
+            np.savez(_STATE_PATH, **save_dict)
+        except Exception:
+            pass
 
     def select_action(self, context: np.ndarray, meta_labeler_score: float) -> str:
         """Select sizing action given context vector and meta-labeler score."""
@@ -57,6 +89,7 @@ class ContextualBandit:
         self.A[action] += np.outer(context, context)
         self.b[action] += reward * context
         self.trade_count += 1
+        self._save_state()
 
     def build_context(self, signal: dict, meta_score: float) -> np.ndarray:
         """Build context vector from signal features."""

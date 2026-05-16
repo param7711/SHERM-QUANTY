@@ -21,10 +21,13 @@ from risk_governor import RiskGovernor
 class AI5_FeedbackLoop:
     """
     Monitors positions, records outcomes, updates edge metrics, feeds RL.
+    Bandit and Bayesian optimizer are updated after every closed trade.
     """
 
-    def __init__(self):
-        self.risk_governor = RiskGovernor()
+    def __init__(self, bandit=None, bayesian_optimizer=None):
+        self.risk_governor      = RiskGovernor()
+        self.bandit             = bandit
+        self.bayesian_optimizer = bayesian_optimizer
         self._ensure_kairos_schema()
 
     def monitor_positions(self, open_positions: list, current_market: dict):
@@ -41,6 +44,23 @@ class AI5_FeedbackLoop:
         self._check_decay(outcome['edge_id'])
         self._write_replay_buffer(outcome)
         self._update_shadow_ledger_outcome(outcome)
+        self._update_rl(outcome)
+
+    def _update_rl(self, outcome: dict):
+        """Update bandit and Bayesian optimizer with closed-trade outcome."""
+        import numpy as np
+
+        if self.bandit is not None and 'bandit_action' in outcome:
+            action  = outcome['bandit_action']
+            context = np.array(outcome.get('bandit_context') or [0.0] * 10)
+            reward  = float(outcome.get('net_return_pct', 0.0))
+            self.bandit.update(action, context, reward)
+
+        if self.bayesian_optimizer is not None:
+            param   = outcome.get('trigger_feature', 'z_21d_threshold')
+            trigger = float(outcome.get('trigger_value', 0.0))
+            pnl     = float(outcome.get('net_return_pct', 0.0))
+            self.bayesian_optimizer.record_outcome(trigger, param, pnl)
 
     def _execute_exit(self, position: dict, reason: str):
         """Trigger exit order. In live: calls AI4_Executor. Here: logs the event."""
