@@ -157,7 +157,8 @@ def _fetch_kite_2h(kite, token: int) -> pd.Series | None:
     if not chunks:
         return None
     df = pd.concat(chunks, ignore_index=True)
-    df['date'] = pd.to_datetime(df['date'])
+    dt = pd.to_datetime(df['date'])
+    df['date'] = dt.dt.tz_localize(None) if dt.dt.tz is not None else dt
     s = df.set_index('date')['close'].sort_index()
     s = s[~s.index.duplicated(keep='last')]
     s.name = 'nifty'
@@ -180,7 +181,8 @@ def _yf_hourly_to_2h(ticker: str) -> pd.Series | None:
     if raw is None or len(raw) == 0:
         return None
     close = raw['Close'].squeeze()
-    close.index = pd.to_datetime(close.index)
+    idx = pd.to_datetime(close.index)
+    close.index = idx.tz_localize(None) if idx.tz is not None else idx
     close = close.dropna()
     # Resample to 2h; drop empty (overnight/weekend) buckets.
     two_h = close.resample('2h').last().dropna()

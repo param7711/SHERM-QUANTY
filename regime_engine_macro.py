@@ -68,7 +68,10 @@ def _load_nifty_close(start: str = DATA_START) -> pd.Series:
                               auto_adjust=True, progress=False)
             close = raw['Close'].squeeze()
             if len(close) > 100:
-                close.index = pd.to_datetime(close.index).normalize()
+                idx = pd.to_datetime(close.index)
+                if idx.tz is not None:
+                    idx = idx.tz_localize(None)
+                close.index = idx.normalize()
                 close.name = 'nifty'
                 print(f"  [macro] India index → using {ticker} ({len(close)} bars)")
                 return close.dropna().loc[start:]
