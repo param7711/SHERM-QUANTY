@@ -177,6 +177,25 @@ checked via double-run diff), but NOT YET SENT to the user or independently re-v
 the supervisor session — the user said "stop" mid-handoff and this was paused. NEXT STEP:
 verify + send `generalization.ipynb`, then decide whether/how to respond to the P3 finding.
 
+## Intraday FX test — BUILT, NOT YET VERIFIED (`intraday_fx.ipynb`)
+Real long-history intraday FX, reachable from the sandbox (this is the first intraday grid
+in the project that is NOT synthetic).
+SOURCE: https://github.com/ejtraderLabs/historical-data (community repo, NOT an official feed)
+  https://raw.githubusercontent.com/ejtraderLabs/historical-data/main/{SYM}/{SYM}{tf}.csv
+  SYM in {EURUSD,GBPUSD,USDJPY}; tf in {m15,m30,h1,h4,d1}; cols Date,open,high,low,close,tick_volume
+  PRICES ARE INTEGER-SCALED, SCALE DIFFERS BY PAIR: EURUSD/GBPUSD /1e5, USDJPY /1e3.
+  57,600 bars/pair, 2012-11-16 -> 2022-03-04. DATA ENDS 2022-03 — says nothing about 2022-2026.
+  Verified 14/14: monotone, 0 dups, positive, OHLC-consistent; hourly vol 0.100/0.114/0.109%;
+  BREXIT GBPUSD 2016-06-23/24 1.5006->1.3379 = -10.84%; COVID EURUSD Mar-2020 7.7% swing.
+GRID: 3 pairs x {1h direct, 2h resampled DOWN from h1} = 6 runs. All constants frozen at the
+shipped values; only scaler/fit-window baselines re-derive. BARS_PER_DAY 24 (1h) / 12 (2h).
+STATUS: generator + notebook COMPLETE and runnable. The verification run was STOPPED BY THE
+USER partway through — 3 of 6 runs had completed cleanly (EUR/USD@1h 90.6s, EUR/USD@2h 39.8s,
+GBP/USD@1h 64.8s), no figures rendered yet (figure cells run after all six). Runtime probe
+measured on the largest run projected 6.4 min for the full grid (96 HMM fits, 5.0s/fit), well
+inside budget, so NOTHING was capped or cut. NEXT STEP: complete the cell-by-cell verification
+run, inspect the rendered PNGs, then report. Do not assume it passes — it is unverified.
+
 ## Deliverables sent to the user (via SendUserFile — these are the durable copies)
 - `regdet_v11_master.ipynb` — the master detector (v6 config + 6 bugs + 12-day window).
   Confirmed by the user as matching their `final_regdet_v9.ipynb` Kaggle run — "v9 is final".
