@@ -9,8 +9,11 @@ statistics themselves are compared byte-for-byte.
 """
 import re, sys, difflib
 
-# a trailing bare float on a grid-table row is the `secs` column
-GRID_ROW = re.compile(r'^(\S+@\d+h\s+.*?)\s+\d+\.\d+\s*$')
+# A trailing bare float on a grid-table row is the `secs` column. Two row
+# shapes exist: intraday_fx's rows START with the run id, fx_sensitivity's
+# start with the arm (`ctx12 EUR/USD@1h ...`). Cover both -- matching only the
+# first shape let the sensitivity sweep's timings look like non-determinism.
+GRID_ROW = re.compile(r'^((?:ctx\d+\s+)?\S+@\d+h\s+.*?)\s+\d+\.\d+\s*$')
 SUBS = [
     (re.compile(r'\d+\.\d+\s*s\b'), '<T>'),        # 12.3s
     (re.compile(r'\b\d+s\b'), '<T>'),              # 91s / 409s
