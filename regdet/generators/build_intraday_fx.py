@@ -27,8 +27,15 @@ generator, regime_scorecard.py or any sibling generator.
 import json
 import os
 
-HERE = '/tmp/claude-0/-home-user-SHERM-QUANTY/f1a44349-dfe0-5e0f-9b1f-b0b39e930e1b/scratchpad'
-OUT = f'{HERE}/intraday_fx.ipynb'
+# Sibling generators live beside this file; the notebook is written to
+# ../notebooks. Both were hardcoded to one session's scratchpad, which made the
+# generator unrunnable from a fresh checkout -- and the generator is the source
+# of truth, so it has to run anywhere the repo is cloned. REGDET_OUT_DIR
+# overrides the output directory when building into a scratchpad instead.
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT_DIR = os.environ.get('REGDET_OUT_DIR',
+                         os.path.join(os.path.dirname(HERE), 'notebooks'))
+OUT = os.path.join(OUT_DIR, 'intraday_fx.ipynb')
 MASTER_GEN = f'{HERE}/build_master_notebook_v2.py'
 SL_GEN = f'{HERE}/build_stability_lag.py'
 
@@ -42,7 +49,7 @@ SL_GEN = f'{HERE}/build_stability_lag.py'
 _gsrc = open(MASTER_GEN).read()
 assert "regdet_v11_master.ipynb'" in _gsrc
 _gsrc = _gsrc.replace("regdet_v11_master.ipynb'", "_intraday_fx_engine_harvest.ipynb'", 1)
-_ns = {'__name__': '_master_gen_harvest'}
+_ns = {'__name__': '_master_gen_harvest', '__file__': MASTER_GEN}
 exec(compile(_gsrc, MASTER_GEN, 'exec'), _ns)
 _mcells = _ns['cells']
 
@@ -123,7 +130,9 @@ PROVENANCE = (
     f'build_stability_lag.py'
 )
 try:
-    os.remove(f'{HERE}/_intraday_fx_engine_harvest.ipynb')
+    # the harvest throwaway lands in OUT_DIR, since the redirect above rewrites
+    # only the master generator's FILENAME, not its output directory
+    os.remove(os.path.join(OUT_DIR, '_intraday_fx_engine_harvest.ipynb'))
 except OSError:
     pass
 
@@ -1692,6 +1701,11 @@ if _ok_all:
              label='no degradation (y = x)')
     axR.fill_between([-lim, 0], 0, lim, color='crimson', alpha=0.07)
     axR.fill_between([0, lim], -lim, 0, color='crimson', alpha=0.07)
+    # One FIXED label offset collides whenever two runs land close together --
+    # EUR/USD@1h and EUR/USD@2h overlapped each other and their own marker.
+    # Flip the offset away from any label already placed nearby instead.
+    _placed = []
+    _near_x, _near_y = 0.34 * lim, 0.20 * lim
     for i, r in enumerate(_ok_all):
         if not fin[i]:
             continue
@@ -1699,8 +1713,14 @@ if _ok_all:
         axR.scatter(isv[i], oov[i], marker=mk, s=70,
                     color=('crimson' if inv[i] else '#1a7f37'),
                     edgecolor='black', linewidth=0.6, zorder=3)
+        _off, _ha, _va = (6, 5), 'left', 'bottom'
+        if any(abs(isv[i] - px) < _near_x and abs(oov[i] - py) < _near_y
+               for px, py in _placed):
+            _off, _ha, _va = (-6, -6), 'right', 'top'
+        _placed.append((isv[i], oov[i]))
         axR.annotate(r['run_id'], (isv[i], oov[i]), fontsize=7,
-                     xytext=(5, 4), textcoords='offset points')
+                     ha=_ha, va=_va,
+                     xytext=_off, textcoords='offset points')
     axR.set_xlim(-lim, lim); axR.set_ylim(-lim, lim)
     axR.set_xlabel('IN-SAMPLE HAC t')
     axR.set_ylabel('OUT-OF-SAMPLE HAC t')
@@ -1740,7 +1760,10 @@ if _ok_all:
     # the pre-registered P2 band, drawn against the SIDEWAYS SEGMENT's own
     # height -- shown as a separate marker row rather than a horizontal line
     # across a STACKED bar, which would read against the wrong quantity.
-    axA.set_ylim(0, 122)
+    # Headroom above the 100% bar tops carries BOTH the band-verdict row and
+    # the regime legend. 'lower center' used to drop the legend straight on
+    # top of the EUR/USD@2h and GBP/USD bars, hiding the segments it labels.
+    axA.set_ylim(0, 152)
     axA.set_xticks(x); axA.set_xticklabels(names, rotation=20, ha='right', fontsize=9)
     axA.set_ylabel('occupancy %')
     axA.set_title('Label occupancy, all 5 labels, averaged over the '
@@ -1751,11 +1774,11 @@ if _ok_all:
                   fontsize=9.5)
     for xi, r in enumerate(_ok_all):
         s = r['occ']['SIDEWAYS']
-        axA.text(xi, 112, 'in P2 band' if P2_LO <= s <= P2_HI else 'OUT of band',
+        axA.text(xi, 106, 'in P2 band' if P2_LO <= s <= P2_HI else 'OUT of band',
                  ha='center', fontsize=7.5,
                  color=('#1a7f37' if P2_LO <= s <= P2_HI else 'crimson'),
                  fontweight='bold')
-    regime_legend(axA, loc='lower center')
+    regime_legend(axA, loc='upper center')
 
     GK = ('G1', 'G2', 'G3', 'G4')
     GT = {'G1': f'G1  occ in [{OCC_MIN_PCT:.0f},{OCC_MAX_PCT:.0f}]%',

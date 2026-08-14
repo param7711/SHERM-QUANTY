@@ -19,12 +19,19 @@ Upgrades in this version:
 No matplotlib backend is forced anywhere; nothing imports regdet_v11.
 """
 import json
+import os
 
-OUT = '/tmp/claude-0/-home-user-SHERM-QUANTY/f1a44349-dfe0-5e0f-9b1f-b0b39e930e1b/scratchpad/regdet_v11_master.ipynb'
+# Paths were pinned to one session's scratchpad, which left the generators --
+# the declared source of truth -- unrunnable from a fresh clone. Resolve them
+# relative to this file instead; REGDET_OUT_DIR overrides the output directory.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_OUT_DIR = os.environ.get('REGDET_OUT_DIR',
+                          os.path.join(os.path.dirname(_HERE), 'notebooks'))
+OUT = os.path.join(_OUT_DIR, 'regdet_v11_master.ipynb')
 
 cells = []
 
-SC_PATH = '/tmp/claude-0/-home-user-SHERM-QUANTY/f1a44349-dfe0-5e0f-9b1f-b0b39e930e1b/scratchpad/regime_scorecard.py'
+SC_PATH = os.path.join(_HERE, 'regime_scorecard.py')
 _sc_raw = open(SC_PATH).read()
 _cut = _sc_raw.index('if __name__ == "__main__":')
 _SCORECARD_SRC = (

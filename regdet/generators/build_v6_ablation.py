@@ -25,10 +25,14 @@ already use). The S / L / W metrics, the ZigZag, the leakage tripwire and guards
 G1..G4 are inlined VERBATIM out of build_stability_lag.py.
 """
 import json
+import os
 import re
 
-HERE = '/tmp/claude-0/-home-user-SHERM-QUANTY/f1a44349-dfe0-5e0f-9b1f-b0b39e930e1b/scratchpad'
-OUT = f'{HERE}/v6_ablation.ipynb'
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(
+    os.environ.get('REGDET_OUT_DIR',
+                   os.path.join(os.path.dirname(HERE), 'notebooks')),
+    'v6_ablation.ipynb')
 MASTER_GEN = f'{HERE}/build_master_notebook_v2.py'
 SL_GEN = f'{HERE}/build_stability_lag.py'
 
@@ -42,7 +46,7 @@ SL_GEN = f'{HERE}/build_stability_lag.py'
 _gsrc = open(MASTER_GEN).read()
 assert "regdet_v11_master.ipynb'" in _gsrc
 _gsrc = _gsrc.replace("regdet_v11_master.ipynb'", "_v6ab_engine_harvest.ipynb'", 1)
-_ns = {'__name__': '_master_gen_harvest'}
+_ns = {'__name__': '_master_gen_harvest', '__file__': MASTER_GEN}
 exec(compile(_gsrc, MASTER_GEN, 'exec'), _ns)
 _mcells = _ns['cells']
 

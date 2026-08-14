@@ -1,17 +1,27 @@
 """Run intraday_fx.ipynb the way Jupyter does: each cell compiled SEPARATELY
 into its own code object against ONE shared namespace. Concatenating cells into
 a single file breaks `from __future__ import annotations` and has wasted time on
-this project before -- so it is not done here."""
+this project before -- so it is not done here.
+
+Usage:  python3 _fx_cellrun.py [FIG_SUBDIR]
+        NB_DIR=/some/dir python3 _fx_cellrun.py     # notebook lives elsewhere
+
+Cell 0 is `%pip install` -- a Jupyter magic and a SyntaxError in plain Python.
+Magic lines are blanked, NOT treated as failures.
+"""
 import json, re, sys, time, traceback, os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-D = '/tmp/claude-0/-home-user-SHERM-QUANTY/f1a44349-dfe0-5e0f-9b1f-b0b39e930e1b/scratchpad/'
-FD = D + (sys.argv[1] if len(sys.argv) > 1 else '_fx_figs')
+# Was pinned to one session's scratchpad, which made the harness unusable from
+# a fresh clone. Default to the repo's notebooks/ dir; NB_DIR overrides.
+HERE = os.path.dirname(os.path.abspath(__file__))
+D = os.environ.get('NB_DIR', os.path.join(os.path.dirname(HERE), 'notebooks'))
+FD = os.path.join(D, sys.argv[1] if len(sys.argv) > 1 else '_fx_figs')
 MAGIC = re.compile(r'^\s*%[A-Za-z]')
 
-nb = json.load(open(D + 'intraday_fx.ipynb'))
+nb = json.load(open(os.path.join(D, 'intraday_fx.ipynb')))
 ns = {'__name__': '__main__'}
 os.makedirs(FD, exist_ok=True)
 figs, fails = 0, []
