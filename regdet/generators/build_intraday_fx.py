@@ -1950,6 +1950,25 @@ GRADES['P3'] = _p3
 print(f'    {len(_same)} of {_N} runs KEPT their sign; {len(_invd)} INVERTED.')
 print(f'    -> P3 {verdict(_p3)}')
 
+# The sign-STABILITY count above does not say which WAY the contrast points.
+# A run keeps its sign just as well by being wrong in BOTH spans, so the raw
+# count flatters the result unless this is printed beside it. Computed, not
+# narrated; it changes no grade.
+_oos_neg = [r for r in _okR if np.isfinite(r['OOS_D']) and r['OOS_D'] < 0]
+_same_neg = [r for r in _same if np.isfinite(r['OOS_D']) and r['OOS_D'] < 0]
+_is_holds = [r for r in _okR if r['ord_is'] == 'HOLDS']
+_oos_holds = [r for r in _okR if r['ord_oos'] == 'HOLDS']
+print(f'    QUALIFIER (direction, not just stability of the sign):')
+print(f'      {len(_oos_neg)} of {_N} runs have a NEGATIVE OOS (BULL - BEAR) contrast '
+      f'-- bars')
+print(f'      labelled BULL UNDERPERFORMED bars labelled BEAR out of sample.')
+print(f'      {len(_same_neg)} of the {len(_same)} "same sign" run(s) held a NEGATIVE '
+      f'contrast in BOTH')
+print(f'      spans: they pass the non-inversion test by being consistently')
+print(f'      anti-predictive, which is not evidence the detector works.')
+print(f'      Full 5-label ordering HOLDS on {len(_is_holds)} of {_N} IS spans '
+      f'and {len(_oos_holds)} of {_N} OOS spans.')
+
 # ---- P4 -------------------------------------------------------------------
 print(f"\nP4  {PREDICTIONS['P4'][0]}")
 _p4 = False
@@ -2020,32 +2039,34 @@ print(f'  THIS notebook  (REAL INTRADAY FX, ~{int(np.mean([r["n_bars"] for r in 
 print(f'      {_ni} of {_N} runs INVERTED sign between IS and OOS.')
 print(f'      Its pre-registered P3 is {verdict(GRADES["P3"])}.')
 print()
-_daily_majority_inverted = DAILY_INV > DAILY_N / 2
-_intra_majority_inverted = _ni > _N / 2
 print('  PLAIN WORDS:')
-if _daily_majority_inverted and _intra_majority_inverted:
-    print('  The intraday result AGREES with the daily finding. A MAJORITY of runs')
-    print('  invert on BOTH cadences. On roughly four times the sample per run, the')
-    print('  IS-to-OOS sign inversion REPRODUCES. This is not a small-sample')
-    print('  artefact of the daily grid: it survives a much better-powered test,')
-    print('  which makes the overfitting reading STRONGER, not weaker.')
-elif (not _daily_majority_inverted) and (not _intra_majority_inverted):
-    print('  The intraday result AGREES with the daily finding in the sense that')
-    print('  neither cadence inverts on a majority of runs.')
-elif _daily_majority_inverted and not _intra_majority_inverted:
-    print('  The intraday result DISAGREES with the daily finding. The daily grid')
-    print('  inverted on a majority of runs; this intraday grid does NOT, on '
-          'roughly')
-    print('  four times the sample per run. The daily inversion therefore does not')
-    print('  generalise down the timeframe axis. Two readings are open and this')
-    print('  notebook does not choose between them: either the daily inversion was')
-    print('  a small-sample artefact, or intraday and daily FX are genuinely')
-    print('  different problems for this detector. Deciding that needs work this')
-    print('  notebook does not do.')
-else:
-    print('  The intraday result DISAGREES with the daily finding in the other')
-    print('  direction: this grid inverts on a majority of runs where the daily')
-    print('  grid did not.')
+# Answered on the PRE-REGISTERED TEST first. The raw inversion COUNT is a
+# second, weaker axis: at n=6 per grid a one- or two-run gap is not separable
+# from noise, so it is reported as a number and explicitly NOT promoted into a
+# claim that one cadence behaves differently from the other.
+print('  ON THE PRE-REGISTERED TEST THE TWO GRIDS AGREE, and they agree on the')
+print(f'  FAILING side: P3 was REFUTED on the daily grid and is '
+      f'{verdict(GRADES["P3"])} here.')
+print('  Neither cadence supports the prediction that the out-of-sample')
+print('  contrast keeps its in-sample sign.')
+print()
+print(f'  ON THE RAW INVERSION COUNT the two differ by '
+      f'{abs(DAILY_INV - _ni)} run '
+      f'({DAILY_INV}/{DAILY_N} daily vs {_ni}/{_N} intraday). At six runs per')
+print('  grid that gap is not separable from sampling noise, so this notebook')
+print('  does NOT read it as the daily inversion "failing to generalise" down')
+print('  the timeframe axis. Better power per run did not overturn the daily')
+print('  result; it reproduced the same refutation.')
+if len(_oos_neg) == _N:
+    print()
+    print('  AND THE SHARPER FINDING, which the inversion count alone hides:')
+    print(f'  EVERY ONE of the {_N} intraday runs has a NEGATIVE out-of-sample')
+    print('  contrast. Not one run shows BULL-labelled bars outperforming')
+    print('  BEAR-labelled bars out of sample, and the full 5-label ordering')
+    print(f'  HOLDS on {len(_oos_holds)} of {_N} OOS spans. The intraday grid therefore does')
+    print('  not rescue the architecture: it agrees with the daily grid that the')
+    print('  forward-return edge does not survive out of sample, and adds that')
+    print('  on this data the surviving contrast points the WRONG WAY.')
 print()
 print('  CAVEAT ON THE COMPARISON, stated rather than buried: the two grids do '
       'NOT')
