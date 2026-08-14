@@ -177,7 +177,7 @@ checked via double-run diff), but NOT YET SENT to the user or independently re-v
 the supervisor session — the user said "stop" mid-handoff and this was paused. NEXT STEP:
 verify + send `generalization.ipynb`, then decide whether/how to respond to the P3 finding.
 
-## Intraday FX test — BUILT, NOT YET VERIFIED (`intraday_fx.ipynb`)
+## Intraday FX test — BUILT AND VERIFIED (`intraday_fx.ipynb`)   ← LATEST WORK
 Real long-history intraday FX, reachable from the sandbox (this is the first intraday grid
 in the project that is NOT synthetic).
 SOURCE: https://github.com/ejtraderLabs/historical-data (community repo, NOT an official feed)
@@ -189,12 +189,52 @@ SOURCE: https://github.com/ejtraderLabs/historical-data (community repo, NOT an 
   BREXIT GBPUSD 2016-06-23/24 1.5006->1.3379 = -10.84%; COVID EURUSD Mar-2020 7.7% swing.
 GRID: 3 pairs x {1h direct, 2h resampled DOWN from h1} = 6 runs. All constants frozen at the
 shipped values; only scaler/fit-window baselines re-derive. BARS_PER_DAY 24 (1h) / 12 (2h).
-STATUS: generator + notebook COMPLETE and runnable. The verification run was STOPPED BY THE
-USER partway through — 3 of 6 runs had completed cleanly (EUR/USD@1h 90.6s, EUR/USD@2h 39.8s,
-GBP/USD@1h 64.8s), no figures rendered yet (figure cells run after all six). Runtime probe
-measured on the largest run projected 6.4 min for the full grid (96 HMM fits, 5.0s/fit), well
-inside budget, so NOTHING was capped or cut. NEXT STEP: complete the cell-by-cell verification
-run, inspect the rendered PNGs, then report. Do not assume it passes — it is unverified.
+STATUS: VERIFIED. Full cell-by-cell run, all 6 runs, 0 cell failures, 3 figures, ~430s.
+Runtime probe projected 409s and the grid took 399s — nothing capped, R=4 intact, no pair
+or timeframe dropped. Data re-verified live: 14/14 structural + event checks pass, all the
+numbers above reproduced exactly. BARS_PER_DAY realised 24.00 / 12.00 vs assumed 24 / 12
+(ratio 1.00). Determinism: two full runs, OMP_NUM_THREADS=1, 564 comparable lines IDENTICAL.
+Truncation probe: 0 labels differ at t<=T on one run per timeframe. G4 degenerate stub and
+G3 whipsaw stub both BITE. ZZ_CALLS==0 through the whole label phase.
+
+RESULTS (all 6 runs, nothing re-tuned, nothing dropped):
+  P1 CONFIRMED  guards G1-G4 pass on 6 of 6 runs (note: the DAILY sibling failed G3 on 4 of
+                6; intraday W is 10-15 switches/100 bars, comfortably under the 25 limit)
+  P2 CONFIRMED  SIDEWAYS in [20,45]% on 5 of 6 (EUR/USD@1h is the outlier at 10.2%)
+  P3 REFUTED    3 of 6 runs INVERT sign IS->OOS (GBP/USD@1h, USD/JPY@1h, USD/JPY@2h)
+  P4 CONFIRMED  same-pair mean distance 3.030 < same-timeframe 3.535
+
+THE HEADLINE, stated more sharply than the inversion count alone implies:
+  ALL SIX runs have a NEGATIVE out-of-sample (BULL - BEAR) contrast. Not one run shows
+  BULL-labelled bars outperforming BEAR-labelled bars out of sample. The three runs that
+  "kept their sign" kept a NEGATIVE one in BOTH spans — they pass the non-inversion test by
+  being consistently ANTI-PREDICTIVE, which is not evidence the detector works. Full 5-label
+  ordering HOLDS on 0 of 6 IS spans and 0 of 6 OOS spans. OOS HAC t range -0.18 to -1.62.
+INTRADAY vs DAILY: they AGREE, on the failing side. P3 was REFUTED on both grids. The raw
+  inversion counts differ by ONE run (4/6 daily vs 3/6 intraday), which at n=6 per grid is
+  not separable from sampling noise — so this is NOT read as the daily inversion "failing to
+  generalise" down the timeframe axis. ~3.1x better sample per run did not overturn the
+  daily result; it reproduced the same refutation. CAVEAT: the grids do not cover the same
+  span (daily 1971/1999->2026 vs intraday 2012-11->2022-03), so cadence and sample period
+  are confounded and this design cannot separate them.
+NOTE: an earlier draft of the notebook's own verdict cell read this comparison as
+  "DISAGREES ... the daily inversion therefore does not generalise down the timeframe axis",
+  resting entirely on the 4/6-vs-3/6 majority flip. That was corrected — it promoted a
+  one-run gap into a qualitative claim, in the flattering direction. No GRADE was changed.
+
+## Generator portability + a pre-existing breakage found while verifying
+Every `build_*.py` had `HERE` pinned to a dead session scratchpad, so the declared source of
+truth could not rebuild anything from a fresh clone. All 8 now resolve paths relative to the
+generator file; `REGDET_OUT_DIR` overrides the output dir. Same fix in `harnesses/_fx_cellrun.py`
+(`NB_DIR` override). `harnesses/_fx_diff.py` was reporting FALSE differences — it stripped only
+`12.3s`-style timings and missed integer seconds and the bare `secs` column; now normalises all.
+PRE-EXISTING, NOT introduced by this work, verified against the committed baseline: 5 of 8
+generators cannot rebuild their notebooks against the current master —
+`build_stability_lag`, `build_hmm_share_charts`, `build_daily_fit`, `build_v6_ablation`,
+`build_sideways_fix` all assert the master's constants cell contains `BAR_DIR_WEIGHT   = 0.0`,
+but the shipped master is 0.5. Their .ipynb files therefore cannot currently be regenerated
+from their generators. NOT fixed here — fixing it risks changing shipped notebooks and needs
+a user decision. `build_master_notebook_v2`, `build_generalization`, `build_intraday_fx` build.
 
 ## Deliverables sent to the user (via SendUserFile — these are the durable copies)
 - `regdet_v11_master.ipynb` — the master detector (v6 config + 6 bugs + 12-day window).
