@@ -573,6 +573,85 @@ print('  Sharpe, no tradeability claim -- this measures a DETECTOR.')
 print('=' * 108)
 """)
 
+md(r"""
+## 6. The figure — discovery versus held-out
+""")
+
+co(r"""
+# ===========================================================================
+# THE FIGURE. Discovery and held-out are drawn in DIFFERENT COLOURS and never
+# averaged together -- the whole point is that they disagree.
+# ===========================================================================
+fig, (axA, axB) = plt.subplots(1, 2, figsize=(14, 5.2))
+C_DISC, C_HELD, C_VOID = '#4C72B0', '#c44e52', '#999999'
+
+names = [d['name'] for d in ALL_INST]
+vals = [DELTA[n]['delta'] for n in names]
+grps = [DELTA[n]['grp'] for n in names]
+cols = [C_DISC if g == 'discovery' else C_HELD for g in grps]
+y = np.arange(len(names))
+plotted = [v if np.isfinite(v) else 0.0 for v in vals]
+axA.barh(y, plotted, color=[c if np.isfinite(v) else C_VOID
+                            for c, v in zip(cols, vals)],
+         edgecolor='black', linewidth=0.6)
+for i, v in enumerate(vals):
+    if not np.isfinite(v):
+        axA.text(0.02, i, '  UNDEFINED - guards G1+G2 failed (SNB de-peg)',
+                 va='center', fontsize=8, color='black', style='italic')
+axA.axvline(0, color='black', lw=1.2)
+# the discovery CI, drawn as the band the held-out values had to land in
+axA.axvspan(d_lo, d_hi, color=C_DISC, alpha=0.13, zorder=0)
+axA.text((d_lo + d_hi) / 2, len(names) - 0.35,
+         f'discovery 95% CI\n[{d_lo:+.2f}, {d_hi:+.2f}]', ha='center',
+         fontsize=8, color=C_DISC, fontweight='bold')
+axA.set_yticks(y)
+axA.set_yticklabels([f'{n}  ({g})' for n, g in zip(names, grps)], fontsize=9)
+axA.invert_yaxis()
+axA.set_xlabel('delta  =  ctx3 - ctx12  on out-of-sample HAC t')
+axA.set_title('Per-instrument effect of the shorter lookback\n'
+              'POSITIVE = it helped.  Blue = discovery, red = HELD OUT.',
+              fontsize=10)
+axA.grid(axis='x', alpha=0.25)
+
+# --- right: where each instrument sits before vs after -------------------
+# Labels are STAGGERED by proximity: three instruments start within 0.3 of
+# each other on the x axis and a single label row printed them on top of one
+# another, unreadable.
+_lab = []
+for d in sorted(ALL_INST, key=lambda z: DELTA[z['name']]['oos'][12]
+                if np.isfinite(DELTA[z['name']]['oos'][12]) else 99):
+    n = d['name']
+    o12, o3 = DELTA[n]['oos'][12], DELTA[n]['oos'][3]
+    c = C_DISC if DELTA[n]['grp'] == 'discovery' else C_HELD
+    if not (np.isfinite(o12) and np.isfinite(o3)):
+        continue
+    axB.annotate('', xy=(o3, 1), xytext=(o12, 0),
+                 arrowprops=dict(arrowstyle='->', color=c, lw=1.8, alpha=0.85))
+    row = 0
+    while any(abs(o12 - px) < 0.42 and row == pr for px, pr in _lab):
+        row += 1
+    _lab.append((o12, row))
+    axB.text(o12, -0.07 - 0.085 * row, n, ha='center', va='top',
+             fontsize=7.5, color=c)
+axB.axvline(0, color='black', lw=1.2)
+axB.set_xlim(-2.2, 1.4)
+axB.set_ylim(-0.42 - 0.085 * max([r for _, r in _lab] or [0]), 1.25)
+axB.set_yticks([0, 1])
+axB.set_yticklabels(['CONTEXT_DAYS = 12\n(shipped)', 'CONTEXT_DAYS = 3\n(faster)'],
+                    fontsize=9)
+axB.set_xlabel('out-of-sample (BULL - BEAR) HAC t     '
+               'RIGHT of the line = calling direction correctly')
+axB.set_title('Which way each instrument MOVED\n'
+              'blue arrows run right (helped), red arrows run left (hurt)',
+              fontsize=10)
+axB.grid(axis='x', alpha=0.25)
+
+fig.suptitle('HELD-OUT REPLICATION -- the effect reverses on instruments it '
+             'was not selected on', fontsize=12, fontweight='bold')
+fig.tight_layout()
+plt.show()
+""")
+
 nb = {"cells": cells,
       "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python",
                                   "name": "python3"},
