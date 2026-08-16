@@ -334,6 +334,46 @@ notebook does not modify the shipped master. Next step (pending user direction):
 a modest, honestly-reported improvement is worth adopting, and/or whether CONFIRM_BARS 2->1
 (S4, still open) or a genuinely different mechanism is needed to close more of the gap.
 
+## Volatility-adaptive context window — VERIFIED, and it DOES NOT WORK (`fx_adaptive.ipynb`)
+User proposal: widen CONTEXT_DAYS only in LOW-volatility periods, since a wide window is slow
+exactly where violent high-bull/high-bear moves need speed. Mechanism: selector = `vol_expansion`
+at a FIXED 12d reference (never the adaptive window — that would be circular), hysteresis band
+(enter LOW-VOL below fit-window q0.40, exit above q0.60) so the window itself cannot flicker,
+LOW-VOL -> 24d / HIGH-VOL -> 12d, adapting exactly the 3 features CONTEXT_DAYS controls.
+Protocol: `FX_ADAPTIVE_CONTEXT_PROTOCOL.md`. Controls: static ctx12 (shipped) and ctx24
+(always-wide), both run on the same data. 21 runs, 340 fits, TRAIN_CAP_BARS=12000.
+VERIFICATION (all pass): pinning the switch LOW-VOL reproduces static ctx24 bit-for-bit and
+pinning it HIGH-VOL reproduces static ctx12 bit-for-bit (0 of 513,216 feature values differ
+each way) — so the adaptive arm genuinely interpolates between two arms measured here.
+TRUNCATION PROBE on the data-dependent window length (the new look-ahead surface): state at
+t reproduced exactly from prefixes cut at 75/85/95% — 0 bars differ. Guards 21/21, saturation
+0/21, ZZ_CALLS==0.
+ALL SIX pre-registered predictions graded CONFIRMED — **and the result is still a failure.**
+This is the project's sharpest example of pre-registration being necessary but not sufficient:
+the predictions were WELL-FORMED but A2 was framed against the WRONG CONTROL. A2 asked whether
+adaptive is faster than ctx24 on violent moves. ctx24 is the always-slow arm by construction,
+so that bar is rigged-easy. The comparison that matters — against the SHIPPED ctx12 — was never
+pre-registered, and it is negative:
+  vs SHIPPED ctx12   grind whipsaw  12.61 -> 12.51  (-0.9%, negligible)
+                     violent lag L  50.43 -> 59.14  (+17.3% SLOWER)
+  static ctx24       grind whipsaw  12.61 -> 10.85  (-14%, the BEST grind arm by far)
+                     violent lag L  50.43 -> 74.71  (+48% slower)
+So adaptive gives up real speed and buys essentially no coherence. Always-widening is by far
+the best at the user's actual complaint, and is exactly what the user (correctly) rejected on
+speed grounds. The trade-off is real and adaptive landed on the wrong end of it.
+ROOT CAUSE, measured directly (scratchpad `_why.py`, no HMM fits needed):
+**volatility does not track the grind.** P(LOW-VOL | grind cell) = 45.7% vs base rate
+P(LOW-VOL) = 48.7% — a lift of **-3.0pp**, i.e. slightly ANTI-correlated, on all 7 instruments
+(range -1.1 to -4.3). The selector carries ~zero information about whether the market is in a
+grind, so the window widens at times unrelated to the problem it was built to solve.
+IMPLICATION: the user's underlying intuition (adapt the window rather than widening globally)
+is NOT refuted — only the choice of `vol_expansion` as the gating variable is. The obvious
+untried replacement is to gate on TREND EFFICIENCY, which is literally how the grind cell is
+defined (low eff_fast + high eff_slow) and which the engine already computes
+(`trend_efficiency`). NOT YET BUILT OR RUN.
+NOTE: `FX_CONTEXT_WIDEN_PROTOCOL.md` + `build_fx_context.py` (static 12/18/24 sweep) were
+frozen and built but SUPERSEDED before running; the static arms live on as controls here.
+
 ## Generator portability + a pre-existing breakage found while verifying
 Every `build_*.py` had `HERE` pinned to a dead session scratchpad, so the declared source of
 truth could not rebuild anything from a fresh clone. All 8 now resolve paths relative to the
