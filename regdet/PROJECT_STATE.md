@@ -1,6 +1,6 @@
 # RegDet V1.1 — project state (durable; survives context compaction)
 
-Last updated: after the cross-market/cross-timeframe generalization test (`generalization.ipynb`).
+Last updated: after the disjoint-block feature-set test (`fx_featureset.ipynb`).
 
 ## What this is
 2-hour Nifty regime detector, 5 labels (H_BULL/L_BULL/SIDEWAYS/L_BEAR/H_BEAR),
@@ -222,6 +222,118 @@ NOTE: an earlier draft of the notebook's own verdict cell read this comparison a
   resting entirely on the 4/6-vs-3/6 majority flip. That was corrected — it promoted a
   one-run gap into a qualitative claim, in the flattering direction. No GRADE was changed.
 
+## Mean-reversion hypothesis test — VERIFIED (`fx_meanrev.ipynb`)
+User asked whether intraday FX being consistently ANTI-predictive (the intraday_fx headline)
+could be explained by mean reversion rather than trending. Lo-MacKinlay (1988) variance ratio
++ heteroskedasticity-robust z*, plus a quintile test on `mom_3d`. Protocol: `FX_MEANREV_PROTOCOL.md`.
+BUG CAUGHT AND FIXED: a spurious `* n` in the Lo-MacKinlay delta term inflated theta ~n-fold and
+drove every z* to `-0.0`. Fixed (denominator already carries the 1/n normalisation); 3 synthetic
+controls added to prove the corrected statistic actually bites. **The bug-fix changed nothing in
+the verdict** — M1 graded REFUTED identically before and after, because the bug was invisible in
+the pass/fail grade, only in the (unused) magnitude. Kept as the project's example of "measure,
+don't assume a fix mattered."
+  M1 REFUTED   variance ratios 0.80-1.06, no series reaches |z*|>=2 at any horizon tested —
+               not distinguishable from a random walk.
+  M2 CONFIRMED endpoint-only (top-vs-bottom mom_3d quintile spread) — but 0 of 6 series show a
+               MONOTONE quintile curve. Flagged as the same non-monotone-endpoint flaw later
+               found in the detector's own E1/E2 diagnostic checks (see fx_featureset below).
+  M3 REFUTED   -> conclusion: intraday FX here is a near-random-walk, NOT mean-reverting. The
+               anti-predictive labels are not explained by mean reversion.
+
+## Lookback-lookback sensitivity sweep — VERIFIED (`fx_sensitivity.ipynb`)
+User: "increase sensitivity by reducing the max lookback" (CONTEXT_DAYS 12->6->3), CONFIRM_BARS
+held at 2 ("for now just the max lookback"). Protocol: `FX_SENSITIVITY_PROTOCOL.md`. Grid: 4
+instruments (incl. XAU/USD) x 2 timeframes x 3 lookback arms, shipped (12,2) corner as an
+internal baseline. 384 fits.
+BUG CAUGHT AND FIXED: `TRAIN_CAP_BARS` was derived from measured wall-clock runtime — two runs
+on IDENTICAL data produced different caps (11700 vs 11400 bars), a real non-reproducibility.
+Fixed: made a DECLARED CONSTANT (12000), never wall-clock-derived — now used by every later FX
+sweep notebook (`fx_replication.ipynb`, `fx_featureset.ipynb`) that needs a cap.
+  S1 CONFIRMED shortening lookback raises W (monotone).
+  S2 CONFIRMED shortening lookback lowers transition lag L (monotone).
+  S3 CONFIRMED no configuration reaches a majority (>=5/8) of positive OOS contrast --
+             sensitivity does NOT buy skill.
+  S4 NOT EVALUATED (CONFIRM_BARS 2->1 arm out of scope per user instruction; still gradeable,
+             costs zero extra HMM fits, left open).
+  S5 CONFIRMED XAU/USD does not separate from the FX majors.
+HEADLINE: shortening the lookback trades lag for whipsaw (L 44.7->23.2 bars, 36x the noise
+floor) — it does not recover forward-return skill. This directly motivated asking "why not
+just widen the reach instead of narrowing it" -> `fx_replication.ipynb` then `fx_featureset.ipynb`.
+
+## Held-out replication of the ctx3 effect — VERIFIED (`fx_replication.ipynb`)
+Discovery (EUR/USD, GBP/USD, USD/JPY, XAU/USD) showed +0.484 mean OOS-contrast improvement at
+ctx3 vs ctx12. Tested on 3 HELD-OUT instruments (AUD/USD, USD/CAD, USD/CHF) never used to find
+that effect, per the user's explicit "do not overfit" instruction. Protocol:
+`FX_REPLICATION_PROTOCOL.md`, power arithmetic (13% at n=3) computed and stated BEFORE the run.
+  R1 REFUTED   held-out paired effect is NEGATIVE (-0.908, 2 of 2 defined runs negative).
+  R2 untestable given R1's sign.
+  R3 INCONCLUSIVE by design (13% power) but the sign flip needs no power to be informative.
+  R4 CONFIRMED the discovery-set effect reproduces, UNCAPPED, and gets BIGGER (not smaller) --
+             so it is real, reproducible, and robust to the training cap. It still does not
+             generalise to held-out instruments.
+CONCLUSION: **the ctx3 effect was overfitting to the 4 discovery instruments**, not a property
+of the architecture. This is the project's clearest demonstration that a real, reproducible,
+non-cap-artifact effect can still fail to generalise -- confirming CONFIRMED and REFUTED can
+coexist on the same underlying number without contradiction.
+
+## Disjoint-block feature-set fix — VERIFIED (`fx_featureset.ipynb`)   ← LATEST WORK
+Two tied user observations: (1) reading the regime-on-price charts, the detector reads violent
+moves well but "barcodes" through sustained grinds; (2) "isn't the parameters too many? ... the
+noise could be too much." Measured on real AUD/USD data: the shipped 9 features carry only 4.20
+effective dimensions (participation ratio) — `mom_3d`/`mom_5d`/`drawdown`/`dist_ma` correlate
+0.71-0.88, one dimension measured four ways, 5-day reach. An earlier proposal in this
+conversation to ADD nested rungs (1/5/20/60d) was WRONG and retracted: nested rungs make
+conditioning WORSE (measured: 11 nested features -> 2.74 effective dims). The tested fix
+instead REPLACES nested cumulative momentum with 4 DISJOINT, non-overlapping return blocks
+(0-1/1-5/5-20/20-60 days, built by subtracting nested cumsums) + `vol_2h` + `vix_chg` +
+`dist_ma` (drawdown dropped, -0.86 corr with dist_ma; ret_2h dropped, subsumed by d0_1) = 7
+features, 94 params vs shipped 114. `TREND_FEATURE` ('mom_3d') is UNCHANGED and deliberately
+NOT one of the 7 HMM inputs — the INTENSITY (H/L) axis, which already worked on violent moves,
+is untouched; only the DIRECTION/HMM axis changed. Protocol: `FX_FEATURESET_PROTOCOL.md`.
+NOT a parameter search: the block edges and dropped feature were fixed by measured collinearity
+structure before this notebook ran on any instrument, so all 7 repo instruments are graded
+together (no discovery/held-out split).
+STATUS: VERIFIED. 14 runs (2 designs x 7 instruments, 1h, CONTEXT_DAYS=12 both), 0 cell
+failures, 2 figures, 260 HMM fits, ~500s label phase (TRAIN_CAP_BARS=12000, projected 30.3min
+uncapped -> capped). Bit-for-bit check: `feature_design('nested')` reproduces the unmodified
+harvested engine exactly (0 of 229,244 labels differ, 4 seed sets, EUR/USD@1h). Determinism:
+two full independent runs, OMP_NUM_THREADS=1, all 31 code cells' printed output identical
+except one uncapped timing estimate (130s vs 123s, a runtime-probe artifact, not a result).
+  F1 CONFIRMED (PRIMARY) grind-cell whipsaw (the exact "steady trend, low eff_fast / high
+             eff_slow" cell) drops on 6 of 7 instruments; pooled mean 12.62 -> 10.76 (-15%).
+  F2 REFUTED  disjoint's W-by-eff_fast-quintile curve is NOT monotone (9.96/13.02/8.09/
+             14.71/9.57) -- BUT neither is nested's (12.10/15.44/9.93/17.00/11.58). The
+             pre-registered monotonicity premise was itself wrong for the SHIPPED baseline,
+             not just for disjoint -- the earlier "E1 CONFIRMED" read in the diagnostic probes
+             was an endpoint-only (Q1-vs-Q5) comparison, the same flaw the user's own "look at
+             the graph" correction exposed in M2 and E1/E2 earlier this session. Not
+             pre-registered, but visible in the same table: disjoint is pointwise LOWER than
+             nested at all 5 quintiles -- a stronger, if informal, form of "does not regress".
+  F3 CONFIRMED conditioning improves on 7 of 7 instruments, live-measured (not assumed from the
+             earlier single-instrument probe): condition number roughly halves (e.g. GBP/USD
+             60.46->25.14), effective-dimension share 0.47->0.78.
+  F4 CONFIRMED arithmetic: 94 < 114 params.
+  F5 CONFIRMED guards G1-G4 pass 7/7 on BOTH designs -- no structural regression.
+  F6 REFUTED  mean seed-stability S is LOWER for disjoint (91.6% -> 83.5%), the OPPOSITE of
+             the bistability hypothesis this fix was partly motivated by. Unresolved: possible
+             mechanism is that the shipped design's collinearity acts as implicit
+             regularisation (correlated features all agree on the same state groupings,
+             narrowing the EM likelihood surface to fewer basins), and removing it lets EM find
+             more genuinely different local optima. HYPOTHESIS, not verified.
+  F7 CONFIRMED (honesty check, not the goal) mean OOS HAC-t difference -0.094, inside the -0.20
+             floor -- no forward-return skill either way, as fx_meanrev.ipynb already implied.
+VISUAL READ (the check that matters most, per the user's own "look at the graph, not the
+numbers" correction earlier this session): the regime-on-price figure (AUD/USD, USD/CAD,
+EUR/USD, OOS span, nested vs disjoint side by side) shows a REAL but MODEST improvement. The
+barcode is thinner, not fixed. W_grind fell ~10-15% relative; the charts still show dense,
+rapid colour-switching through most of every "steady trend with wiggles" window. This is
+reported as a PARTIAL win, not a fix -- do not let the CONFIRMED grades above overstate what
+the chart actually shows.
+NOT YET DONE: no decision to adopt this into `build_master_notebook_v2.py` has been made. This
+notebook does not modify the shipped master. Next step (pending user direction): decide whether
+a modest, honestly-reported improvement is worth adopting, and/or whether CONFIRM_BARS 2->1
+(S4, still open) or a genuinely different mechanism is needed to close more of the gap.
+
 ## Generator portability + a pre-existing breakage found while verifying
 Every `build_*.py` had `HERE` pinned to a dead session scratchpad, so the declared source of
 truth could not rebuild anything from a fresh clone. All 8 now resolve paths relative to the
@@ -248,6 +360,8 @@ a user decision. `build_master_notebook_v2`, `build_generalization`, `build_intr
   charts explained, the 6 bugs, shipped config, open items. Built for someone with zero
   context on this conversation to read standalone.
 - `generalization.ipynb` — BUILT, VERIFIED, NOT YET SENT (see above).
+- `intraday_fx.ipynb`, `fx_meanrev.ipynb`, `fx_sensitivity.ipynb`, `fx_replication.ipynb`,
+  `fx_featureset.ipynb` — VERIFIED, executed copies with figures sent (see each section above).
 
 ## Verification discipline that has caught real bugs (keep using this)
 - Run notebooks cell-by-cell the way Jupyter does — compile each cell SEPARATELY (shared
