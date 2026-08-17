@@ -374,6 +374,40 @@ defined (low eff_fast + high eff_slow) and which the engine already computes
 NOTE: `FX_CONTEXT_WIDEN_PROTOCOL.md` + `build_fx_context.py` (static 12/18/24 sweep) were
 frozen and built but SUPERSEDED before running; the static arms live on as controls here.
 
+## v9 master run on FX — DELIVERED AS A FILE (`fx_v9.ipynb`)   <- LATEST
+User: "what I asked you to make was the v9 final master for FOREX ... I want it
+tested on EUR/USD, XAU/USD and many other pairs."
+ONE notebook, seven instruments, switched by ONE line at the top of the data
+cell (`FX_INSTRUMENT = 'EURUSD'` -> GBPUSD/USDJPY/XAUUSD/AUDUSD/USDCAD/USDCHF).
+Every chart, label, table and scorecard repoints automatically.
+WHAT DIFFERS FROM THE SHIPPED MASTER, exhaustively: (1) the data cell (cell 5),
+which defines exactly `nifty`/`vix`/`TAC_SYNTH` so the swap needs no downstream
+edit; (2) FIVE display strings in chart cells 27/40/42/60/66, enforced by an
+allowlist assert. NOT ONE CONSTANT is re-tuned -- FX at 8h is 3 bars/day, same
+as Nifty 2h's 3 bars/session, so BARS_PER_DAY=3 stays literally correct and the
+master's own `assert MOM_3D_BARS == 9` passes untouched. Bar count matched to
+the Nifty run (2,858).
+THE LABEL BUG THAT MATTERED: the first version was numerically correct but the
+y-axis still read "Nifty 50 close" while plotting EUR/USD at 1.08-1.23. The user
+read that as "you only showed me Nifty" -- correctly. A chart that lies about its
+own instrument is worse than a patched label; hence the cosmetic substitution.
+VERIFIED WITHOUT A FULL RUN (user asked for the file, not a run, to save tokens):
+all 49 code cells compile; zero Nifty display strings left in chart cells;
+`nifty_close` COLUMN preserved; data layer smoke-tested on EURUSD and XAUUSD --
+2,858 bars each, divisors auto-detected (1e5 / 1e2), realised bars/day 3.00 vs
+assumed 3, zero NaN in the vol proxy. A prior full EURUSD run of this same
+structure completed 0 cell failures / 15 figures / 87s.
+EARLIER EURUSD RESULT (full run, for reference): regime blocks at MATCHED bar
+density are visibly coherent and comparable to Nifty's -- a large part of the
+"FX barcodes" impression across this project was a PLOTTING artefact (57,311
+bars per panel vs 2,858, 20x density), not a detection failure. Several earlier
+conclusions were read off those over-dense charts. Where FX is genuinely worse:
+scorecard FAIL(ANTI) 12 vs Nifty 2, and the config head-to-head DISAGREES with
+the adopted config. Comparable or better: median run lengths 5/3/6/3/6 vs Nifty
+5/2/5/3/5, and drawdown reduction. Ordering BROKEN on both.
+CAVEAT: FX window is 2018-07 -> 2022-03, Nifty's is 2023-09 -> 2026-07, so
+market ERA is confounded with market. Data ends 2022-03-04.
+
 ## Generator portability + a pre-existing breakage found while verifying
 Every `build_*.py` had `HERE` pinned to a dead session scratchpad, so the declared source of
 truth could not rebuild anything from a fresh clone. All 8 now resolve paths relative to the
