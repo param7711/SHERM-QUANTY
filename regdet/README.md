@@ -1,87 +1,107 @@
-# RegDet V1.1 — Sherm Quanty regime detector
+# RegDet — FINAL
 
-**New session / new chat? Read `PROJECT_STATE.md` first.** It is the authoritative
-handoff document: shipped config, every decision made and why, what is settled, what
-is still open, and the verification discipline that has repeatedly caught real bugs.
-Everything below is just a map of the folders.
+The Sherm Quanty market regime detector. **5 labels**
+(`H_BULL` / `L_BULL` / `SIDEWAYS` / `L_BEAR` / `H_BEAR`), built from two
+independent axes:
 
----
-
-## What this is
-
-A 2-hour Nifty regime detector. Every bar gets one of five labels:
-`H_BULL / L_BULL / SIDEWAYS / L_BEAR / H_BEAR`.
-
-It is built from **two independent axes** that get combined:
-
-- **Direction** (bull / sideways / bear) — a Gaussian Hidden Markov Model over 9 causal
-  features, optionally blended with a per-bar momentum score.
+- **Direction** — a Gaussian HMM over 9 causal features, blended 50/50 with a
+  per-bar momentum score.
 - **Intensity** (High vs Low conviction) — pure rolling price statistics
-  (`trend_z` × `trend_efficiency`). **Contains no HMM at all.** This is load-bearing:
-  it is why changing the HMM's weight barely moves occupancy.
+  (`trend_z` × `trend_efficiency`). **Contains no HMM at all.** This is
+  load-bearing: it is why changing the HMM's weight barely moves occupancy.
 
-## Folder map
+**Status: FINAL. No further tuning.** All experimental and superseded versions
+have been removed from the tree; git history retains them if ever needed.
 
-| path | what |
-|---|---|
-| `PROJECT_STATE.md` | **START HERE.** Full state, decisions, open items, constraints. |
-| `protocols/` | Frozen experiment protocols, each written *before* its numbers existed. |
-| `generators/` | **Source of truth.** Notebooks are always regenerated from these, never hand-edited. |
-| `notebooks/` | Generated deliverables (ship unexecuted, 0 stored outputs). |
-| `notes/regdet_notes.pdf` | 14-page standalone explainer — architecture, HMM/EM math, every chart, all bugs. |
-| `harnesses/` | Verification scripts (cell-by-cell runner, off-path equivalence, truncation probes). |
-| `reference/` | v6 and v7 real-data runs, kept as the anchors the ablation compares against. |
+## What is here
 
-## The generator → notebook rule
-
-`build_*.py` files are authoritative. The `.ipynb` files are build products.
-**Never hand-edit a notebook** — change the generator and regenerate. Several bugs in
-this project's history came from notebooks drifting from their generators.
-
-```bash
-cd generators && python3 build_master_notebook_v2.py   # regenerates regdet_v11_master.ipynb
+```
+notebooks/regdet_v11_master.ipynb        the detector on NIFTY 2h        <- final
+notebooks/fx_v9.ipynb                    the SAME detector on FX/gold    <- final
+generators/build_master_notebook_v2.py   source of truth for the master
+generators/build_fx_v9.py                source of truth for the FX build
+generators/regime_scorecard.py           scorecard, inlined by the master
+harnesses/_execute_nb.py                 runs a notebook, captures outputs + figures
+protocols/W_SWEEP_PROTOCOL.md            implemented end-to-end in master section 7W
+notes/regdet_notes.pdf                   14-page standalone explainer
+notes/fx_v9_all7_runlog.txt              the final 7-instrument run log
+FINAL.md                                 close-out: results, limits, rejected ideas
+PROJECT_STATE.md                         full experiment-by-experiment history
 ```
 
-## Shipped configuration (summary — see PROJECT_STATE.md for the reasoning)
+## The generator -> notebook rule
 
-v6 base + 6 audited bug fixes + a 12-day context window.
+`build_*.py` files are authoritative. The `.ipynb` files are build products.
+**Never hand-edit a notebook** — change the generator and regenerate. Several
+bugs in this project's history came from notebooks drifting from generators.
+
+```bash
+python3 regdet/generators/build_master_notebook_v2.py   # -> notebooks/regdet_v11_master.ipynb
+python3 regdet/generators/build_fx_v9.py                # -> notebooks/fx_v9.ipynb
+```
+
+Both rebuild **byte-identical** to what is committed.
+
+## Running the FX version
+
+Open `notebooks/fx_v9.ipynb` and change **one line** at the top of the data cell:
+
+```python
+FX_INSTRUMENT = 'EURUSD'   # 'GBPUSD' 'USDJPY' 'XAUUSD' 'AUDUSD' 'USDCAD' 'USDCHF'
+```
+
+Re-run. Every chart, axis label, table and scorecard repoints automatically.
+It differs from the Nifty master by **one functional cell** (the data loader)
+plus five display strings — **not one constant is re-tuned**. FX at 8h is
+3 bars/day, matching Nifty 2h's 3 bars/session, so `BARS_PER_DAY = 3` stays
+literally correct and `assert MOM_3D_BARS == 9` passes untouched.
+
+## Shipped configuration (identical across every market)
 
 ```
 BAR_DIR_WEIGHT=0.5      ENSEMBLE_K=4        CONF_L=0.50       CONFIRM_BARS=2
 INTENSITY_MODE='frozen_z'                   ESCALATION_DURING_HOLD='allow'
 DIRECTION_MODE='rank'   (verified bit-for-bit no-op)
 Z_HI=0.5  EFF_HI=0.35   Z_HI_EXIT=0.35      EFF_HI_EXIT=0.25   EFF_WIN=9
-Momentum ladder: 1/3/5 days (kept fast)     Context window: 12 days (36 bars)
+Momentum ladder: 1/3/5 days (kept fast)     Context window: 12 days
 ADOPTED_CONFIG_NAME='A: lean-cov'  (N=5, diag, 9 features, 114 params)
 ```
 
-## Hard-won facts a new session should not have to rediscover
+## Read this before building on it
 
-- **`BAR_DIR_WEIGHT` is settled.** Its effect between 0.0–0.75 is smaller than the noise
-  from merely reseeding the same value. Reported UNMEASURABLE under a frozen protocol.
-- **Config ranking is provably undecidable** at 4 folds — the notebook prints
-  `NOT DECIDABLE` rather than a false winner. `A: lean-cov` is pinned on parameter
-  efficiency, not on a Sharpe contest.
-- **EM is bistable** — refits land in one of two "basins" (~98% agreement within,
+RegDet is a **descriptive regime segmenter**, not a forward-return predictor.
+Measured, not assumed:
+
+- forward-return ordering is **BROKEN at all 3 horizons on all 8 runs**, Nifty
+  included — a property of the architecture, not an FX-specific problem;
+- on FX, 7–13 scorecard rows per instrument are materially **backwards**
+  (anti-signal) versus 2 on Nifty, on **7 of 7** instruments;
+- intraday FX variance ratios are 0.80–1.06 with no series reaching `|z*| >= 2`
+  — near-random-walk.
+
+**Consume the labels as state/context, never as a directional signal.** Full
+detail, including everything tried and rejected, is in `FINAL.md`.
+
+## Hard-won facts worth not rediscovering
+
+- **`BAR_DIR_WEIGHT` is settled.** Its effect between 0.0–0.75 is smaller than
+  the noise from merely reseeding the same value — UNMEASURABLE under a frozen
+  protocol.
+- **Config ranking is provably undecidable** at 4 folds; the notebook prints
+  `NOT DECIDABLE` rather than a false winner.
+- **EM is bistable** — refits land in one of two basins (~98% agreement within,
   ~63% across). Suspected cause: collinear nested momentum features. Unresolved.
-- **Every "obvious" bug hypothesis in this project has been wrong at least once when
-  actually measured** (`CONF_L`, `DIRECTION_MODE='rank'`, capacity→stability). Measure first.
-- **yfinance is firewalled in the sandbox.** Only `raw.githubusercontent.com` is reachable
-  for data. Real intraday FX was sourced from a community GitHub repo and validated
-  against Brexit (−10.84%) and COVID before use.
+- **Match bar density before comparing regime charts across markets.** Drawing
+  57,311 bars into a panel sized for 2,858 merges shading into stripes
+  regardless of label quality — this artefact drove several wrong conclusions.
+- **Pre-registration is necessary but not sufficient.** One test passed all six
+  pre-registered predictions and was still a failure, because a prediction was
+  framed against the wrong control. Pre-register against *what ships*.
+- **yfinance is firewalled in the sandbox.** Only `raw.githubusercontent.com` is
+  reachable. FX data was validated against Brexit (−10.84%) and COVID before use.
 
-## Verification discipline (this catches real bugs — keep doing it)
+## Not wired into production
 
-1. Run notebooks **cell-by-cell**, compiling each cell separately against a shared
-   namespace. Cell 0 is always `%pip install` — a Jupyter magic, a `SyntaxError` in plain
-   Python, **not** a failure.
-2. **Truncation probe** for causality: cut the series at `T`, assert no label at `t <= T`
-   changes. Stronger than checking only the final bar.
-3. Pin `OMP_NUM_THREADS=1` for any two-run equivalence check — multithreaded BLAS makes
-   identical configs differ by reduction-order noise.
-4. **Look at the rendered PNGs.** Real rendering defects (weekend-gap shading,
-   semantically inverted heatmap colours, overlapping legends) have been caught this way
-   at least six times, never by reading code.
-5. **Pre-register criteria in a frozen protocol file** before running anything, then grade
-   CONFIRMED/REFUTED in plain words afterward. This produced the project's most trustworthy
-   findings — including results that went *against* the hypothesis being tested.
+`regime_engine_tactical.py` at the repo root is the production tactical engine
+and remains **Nifty-only**; nothing in `regdet/` is imported by it. Integration
+is a separate, deliberate step that has not been taken.
