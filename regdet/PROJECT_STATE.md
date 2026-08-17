@@ -408,6 +408,46 @@ the adopted config. Comparable or better: median run lengths 5/3/6/3/6 vs Nifty
 CAVEAT: FX window is 2018-07 -> 2022-03, Nifty's is 2023-09 -> 2026-07, so
 market ERA is confounded with market. Data ends 2022-03-04.
 
+## v9 ON ALL 7 FX INSTRUMENTS — RUN AND GRADED (`fx_v9.ipynb`)   <- LATEST RESULT
+All 7 executed here, 0 cell failures each, 15 figures each, ~51-60s per run,
+105 figures total. Nothing re-tuned per instrument; only the data differs.
+8h bars, 2,822 bars each (matched to the Nifty run), 2018-07 -> 2022-03.
+
+instrument   ordering    ANTI  PASS  cfg   med run len  SIDE%  Sharpe   B&H   maxDD  B&H DD
+EUR/USD     3/3 BROKEN    12    10   NO     5/3/6/3/6   34.5   -0.07  -0.21   -7.3   -11.5
+GBP/USD     3/3 BROKEN    13     6   NO     4/2/8/2/6   41.9   -0.26   0.11  -11.5   -14.9
+USD/JPY     3/3 BROKEN    12     7   NO     4/2/5/3/4   36.1   -0.18   0.10   -6.1   -10.7
+XAU/USD     3/3 BROKEN    12    10   NO     4/3/8/3/5   30.6    0.30   0.94  -18.3   -18.6
+AUD/USD     3/3 BROKEN     7     8   NO     5/2/7/2/5   39.3    0.14   0.06   -7.0   -24.7
+USD/CAD     3/3 BROKEN    12     7   NO     3/4/6/3/5   32.7   -0.95  -0.13  -17.9   -17.7
+USD/CHF     3/3 BROKEN    10     8   NO     5/2/6/3/4   34.5   -0.23  -0.35   -6.7   -14.0
+NIFTY v9    3/3 BROKEN     2     9   ok     5/2/5/3/5   28.8    0.41   0.60   -7.8   -16.6
+
+THE ONE STATISTIC THAT SEPARATES FX FROM NIFTY: FAIL(ANTI) -- the count of
+scorecard rows where the statistic is materially BACKWARDS for that label.
+FX range 7-13, mean 11.1. Nifty = 2. ALL 7 of 7 FX runs are worse than Nifty,
+so this is NOT an EUR/USD quirk -- it replicates across every instrument
+including gold. On FX the detector is not merely uninformative, it is
+frequently ANTI-informative, and that is the real gap.
+SECOND SEPARATOR: the config head-to-head DISAGREES with the adopted config on
+7 of 7 FX runs (it agrees on Nifty). The adopted 'A: lean-cov' is not what FX
+data would pick.
+WHERE FX IS NOT WORSE: ordering is BROKEN at all 3 horizons on Nifty TOO (7/7
+FX and 3/3 Nifty) -- this is a shared failure, not an FX one. Median run
+lengths are comparable (FX mean 4.3/2.6/6.6/2.8/5.1 vs Nifty 5.0/2.0/5.0/3.0/
+5.0); FX SIDEWAYS runs are actually LONGER. Regime long/flat reduces drawdown
+vs buy&hold on 6 of 7 FX (as on Nifty) and beats B&H Sharpe on 3 of 7 (Nifty:
+does NOT, 0.41 vs 0.60).
+VISUAL: at MATCHED bar density the zoomed regime charts show coherent blocks on
+every instrument -- AUD/USD reads the COVID crash as one sustained bear block
+and the recovery as green; XAU/USD holds long green through 2019-2020. The
+"FX barcodes" impression across this project was substantially a PLOTTING
+artefact (57,311 bars/panel vs 2,858, 20x density), NOT a detection failure.
+Several earlier conclusions in this project were read off those over-dense
+charts and should be treated as suspect.
+CAVEAT: FX window 2018-07->2022-03 vs Nifty 2023-09->2026-07, so market ERA is
+confounded with market. XAU/USD is a commodity, not FX. Data ends 2022-03-04.
+
 ## Generator portability + a pre-existing breakage found while verifying
 Every `build_*.py` had `HERE` pinned to a dead session scratchpad, so the declared source of
 truth could not rebuild anything from a fresh clone. All 8 now resolve paths relative to the
