@@ -1,9 +1,12 @@
--- EDGE LIBRARY
+-- EDGE LIBRARY (v2-forex)
 CREATE TABLE IF NOT EXISTS edge_library (
     edge_id                      TEXT PRIMARY KEY,
-    instrument_class             TEXT NOT NULL,
-    underlying                   TEXT NOT NULL,
-    expiry_type                  TEXT,
+    pair                         TEXT NOT NULL,
+    -- MAJOR / CROSS. Distinguishes single-symbol edges from the two-leg
+    -- relative-value edge (SEED-007), which trades a spread rather than a
+    -- pair. Replaces v4.1's instrument_class, now that there is one asset
+    -- class rather than several.
+    pair_type                    TEXT NOT NULL DEFAULT 'MAJOR',
     trigger_feature              TEXT NOT NULL,
     trigger_condition            TEXT NOT NULL,
     direction                    TEXT NOT NULL,
@@ -11,13 +14,13 @@ CREATE TABLE IF NOT EXISTS edge_library (
     win_rate                     REAL,
     avg_return_net               REAL,
     avg_return_gross             REAL,
+    avg_return_pips              REAL,
     sample_size                  INTEGER,
     p_value                      REAL,
     p_value_corrected            REAL,
     oos_win_rate                 REAL,
     regime                       TEXT NOT NULL,
     vix_bucket                   TEXT,
-    iv_rank_bucket               TEXT,
     live_hit_rate                REAL,
     decay_flag                   INTEGER DEFAULT 0,
     decay_cause                  TEXT,
@@ -25,14 +28,18 @@ CREATE TABLE IF NOT EXISTS edge_library (
     valid_until                  TEXT,
     status                       TEXT DEFAULT 'ACTIVE',
     created_at                   TEXT NOT NULL,
-    feature_set_version          TEXT DEFAULT 'v1',
+    -- Feature formulas moved (28 -> 22, options/futures fields dropped,
+    -- carry added) so this bumps; the regime engine itself is untouched by
+    -- the pivot, so its version does not.
+    feature_set_version          TEXT DEFAULT 'v2-forex',
     regime_model_version         TEXT DEFAULT 'v1',
-    capacity_ceiling_lots        INTEGER,
+    capacity_ceiling_lots        REAL,
     edge_provenance              TEXT NOT NULL,
     seed_source_citation         TEXT,
     regime_at_discovery          TEXT,
-    theta_window_days            INTEGER,
-    synthetic_pricing_used       INTEGER DEFAULT 0,
+    -- Sign of carry_differential when the edge was seeded/discovered. A
+    -- sign flip since is what CARRY_REGIME_FLIP (decay signal 4) detects.
+    carry_direction_at_discovery INTEGER,
     trigger_frequency_baseline   REAL,
     trigger_frequency_current    REAL,
     frequency_decay_flag         INTEGER DEFAULT 0,
@@ -43,13 +50,17 @@ CREATE TABLE IF NOT EXISTS edge_library (
     resurrection_priority        TEXT,
     resurrection_attempts        INTEGER DEFAULT 0,
     mechanism_story              TEXT,
-    signal_strength              TEXT
+    signal_strength               TEXT,
+    -- Written by populate_edges.py at seed time; revalidate_edges.py must
+    -- clear it once real-data priors replace the research estimates. See
+    -- Section 6.5 of the build sequence.
+    needs_revalidation            INTEGER DEFAULT 1
 );
 
 -- HYPOTHESIS GRAVEYARD
 CREATE TABLE IF NOT EXISTS hypothesis_graveyard (
     hypothesis_id          TEXT PRIMARY KEY,
-    instrument_class       TEXT,
+    pair                    TEXT,
     trigger_feature        TEXT,
     trigger_condition      TEXT,
     regime                 TEXT,
@@ -97,12 +108,18 @@ CREATE INDEX IF NOT EXISTS idx_shadow_pending
 CREATE TABLE IF NOT EXISTS execution_quality_log (
     trade_id                        TEXT PRIMARY KEY,
     edge_id                         TEXT,
-    instrument_class                TEXT,
-    underlying                      TEXT,
-    contract_spec                   TEXT,
+    pair                            TEXT,
+    lot_size                        REAL,
+    direction                       TEXT,
     signal_price                    REAL,
     fill_price                      REAL,
-    slippage_bps                    REAL,
+    slippage_pips                   REAL,
+    spread_at_entry_pips            REAL,
+    -- Overnight financing charged while the position was held. Populated
+    -- from the MT bridge; a real cost that the shadow ledger's spread-only
+    -- adjustment does not capture.
+    swap_charged                    REAL,
+    session_at_entry                TEXT,
     fill_status                     TEXT,
     fill_pct                        REAL,
     cost_budgeted_bps               REAL,
@@ -111,14 +128,10 @@ CREATE TABLE IF NOT EXISTS execution_quality_log (
     entry_date                      TEXT,
     exit_date                       TEXT,
     holding_period                  INTEGER,
-    iv_at_entry                     REAL,
-    theta_at_entry                  REAL,
-    basis_at_entry                  REAL,
     net_return_pct                  REAL,
     gross_return_pct                REAL,
     regime_at_entry                 TEXT,
     regime_at_exit                  TEXT,
-    synthetic_pair_leg_consistency  REAL,
     created_at                      TEXT NOT NULL
 );
 
@@ -126,7 +139,7 @@ CREATE TABLE IF NOT EXISTS execution_quality_log (
 CREATE TABLE IF NOT EXISTS rl_replay_buffer (
     transition_id              TEXT PRIMARY KEY,
     edge_id                    TEXT,
-    instrument_class           TEXT,
+    pair                       TEXT,
     holding_period             INTEGER,
     regime_at_trade            TEXT,
     hmm_confidence_at_trade    REAL,
@@ -134,7 +147,6 @@ CREATE TABLE IF NOT EXISTS rl_replay_buffer (
     state_features_json        TEXT,
     action                     TEXT,
     reward                     REAL,
-    synthetic_pricing_source   INTEGER DEFAULT 0,
     trade_date                 TEXT,
     created_at                 TEXT NOT NULL
 );
@@ -149,5 +161,7 @@ CREATE TABLE IF NOT EXISTS version_registry (
 );
 
 INSERT OR IGNORE INTO version_registry VALUES (
-    'v1_init', 'v1', 'v1', datetime('now'), 'Initial MVP deployment'
+    'v2_forex_init', 'v2-forex', 'v1', datetime('now'),
+    'Forex-only pivot: 8-symbol universe (7 majors + XAUUSD) via MetaTrader. '
+    || 'Options/futures fields dropped; regime engine (v1) unchanged by the pivot.'
 );

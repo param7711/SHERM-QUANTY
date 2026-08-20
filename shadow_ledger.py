@@ -188,13 +188,8 @@ def _verification_check():
     test_db = os.path.join(tmpdir, 'test.db')
 
     try:
-        schema_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   'database', 'schema.sql')
-        conn = sqlite3.connect(test_db)
-        with open(schema_path) as f:
-            conn.executescript(f.read())
-        conn.commit()
-        conn.close()
+        from database.init_db import ensure_schema
+        ensure_schema(test_db)
 
         # Patch the module-level DB_PATH so the test never touches the
         # production database. The previous version left a permanent
