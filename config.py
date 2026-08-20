@@ -12,7 +12,17 @@ MT_ACCOUNT_LOGIN   = os.getenv('MT_ACCOUNT_LOGIN')
 MT_ACCOUNT_SERVER  = os.getenv('MT_ACCOUNT_SERVER')
 
 # Capital
-TOTAL_CAPITAL = 1_350_000  # Rs 13.5 lakhs
+#
+# UNITS: this figure must be denominated in ACCOUNT_CURRENCY, because all
+# sizing and margin math resolves position risk into that currency.
+#
+# The 13.5L figure below is a carry-over from the v4.1 own-capital plan and
+# is in RUPEES, which does not match a USD-denominated funded account —
+# reading it as USD overstates the account by ~83x and every position size
+# derived from it. Replace with the funded account's actual balance before
+# paper trading; until then treat backtest position sizes as unitless.
+ACCOUNT_CURRENCY = 'USD'
+TOTAL_CAPITAL    = 1_350_000   # PLACEHOLDER — see units note above
 
 # Instrument universe (MVP) — 7 forex majors + gold.
 # XAUUSD is a direct MetaTrader symbol, not a synthetic construction: the

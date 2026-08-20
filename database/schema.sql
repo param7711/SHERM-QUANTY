@@ -69,8 +69,11 @@ CREATE TABLE IF NOT EXISTS hypothesis_graveyard (
 CREATE TABLE IF NOT EXISTS shadow_ledger (
     signal_id                  TEXT PRIMARY KEY,
     edge_id                    TEXT,
-    instrument_class           TEXT,
-    underlying                 TEXT,
+    pair                       TEXT,
+    -- Direction is its own column. It was previously inferred from
+    -- ai2_decision, which holds APPROVED/REJECTED and never 'SHORT', so
+    -- every shadow outcome was scored as if the signal were long.
+    direction                  TEXT,
     signal_date                TEXT,
     trigger_condition          TEXT,
     regime_at_signal           TEXT,
@@ -84,9 +87,11 @@ CREATE TABLE IF NOT EXISTS shadow_ledger (
     exit_date                  TEXT,
     exit_reason                TEXT,
     feature_values_json        TEXT,
-    synthetic_pricing_used     INTEGER DEFAULT 0,
     created_at                 TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_shadow_pending
+    ON shadow_ledger (signal_date, shadow_outcome);
 
 -- EXECUTION QUALITY LOG
 CREATE TABLE IF NOT EXISTS execution_quality_log (

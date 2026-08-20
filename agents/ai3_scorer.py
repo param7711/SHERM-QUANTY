@@ -1,5 +1,5 @@
 """
-Step 12 — AI 3 Scorer.
+Step 11 — AI 3 Scorer.
 Determines position size in lots for approved signals.
 Rule-based (confidence tiers) by default.
 Contextual bandit overrides sizing when active (>= 200 trades).
@@ -9,7 +9,72 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import TOTAL_CAPITAL, MAX_POSITION_PCT
+import math
+
+from config import (
+    TOTAL_CAPITAL, MAX_POSITION_PCT, CONTRACT_SIZE, MIN_LOT,
+    MAX_LOTS_BY_PERIOD, FX_STOP, SYMBOL_STOP_MULTIPLIER, PAIR_LEGS,
+    ACCOUNT_CURRENCY,
+)
+
+
+def stop_distance_pct(pair: str, holding_period: int) -> float:
+    """Stop as a fraction of price, widened for high-volatility symbols."""
+    base = FX_STOP.get(holding_period, 0.015)
+    return base * SYMBOL_STOP_MULTIPLIER.get(pair, 1.0)
+
+
+def quote_to_account(pair: str, price: float) -> float:
+    """
+    Value of one unit of the pair's quote currency, in account currency.
+
+    For USD-quoted pairs (EURUSD, XAUUSD) a quote unit is already a dollar.
+    For USD-based pairs (USDJPY) the quote is yen, worth 1/price dollars.
+    Crosses with neither leg in USD would need a third rate; the MVP
+    universe has none, so that case raises rather than silently mis-sizing.
+    """
+    base, quote = PAIR_LEGS[pair]
+    if quote == ACCOUNT_CURRENCY:
+        return 1.0
+    if base == ACCOUNT_CURRENCY:
+        return 1.0 / price
+    raise ValueError(
+        f"{pair} has no {ACCOUNT_CURRENCY} leg; cross-rate conversion "
+        f"is not implemented for the MVP universe")
+
+
+def size_position(pair: str, entry_price: float, holding_period: int,
+                  capital: float, risk_multiplier: float = 1.0) -> float:
+    """
+    Lots to trade, from risk rather than notional.
+
+    Risk budget is capital x MAX_POSITION_PCT x multiplier. Loss at the stop
+    is lots x contract_size x stop_distance, converted to account currency.
+    Solving for lots and quantising down to MIN_LOT keeps the realised risk
+    at or under budget — rounding up would breach it.
+    """
+    if entry_price <= 0:
+        return 0.0
+
+    risk_amount   = capital * MAX_POSITION_PCT * risk_multiplier
+    stop_distance = entry_price * stop_distance_pct(pair, holding_period)
+    if stop_distance <= 0:
+        return 0.0
+
+    loss_per_lot = (CONTRACT_SIZE[pair] * stop_distance
+                    * quote_to_account(pair, entry_price))
+    if loss_per_lot <= 0:
+        return 0.0
+
+    raw_lots = risk_amount / loss_per_lot
+
+    # Quantise DOWN to the broker's lot step. int() truncation on a value
+    # below 1.0 would yield 0 and the old max(1, ...) floor then forced a
+    # full standard lot — a silent over-size of up to 100x on a micro-lot
+    # position.
+    lots = math.floor(raw_lots / MIN_LOT) * MIN_LOT
+    lots = min(lots, float(MAX_LOTS_BY_PERIOD.get(holding_period, 1)))
+    return round(max(lots, 0.0), 2)
 
 
 class AI3_Scorer:
@@ -24,17 +89,19 @@ class AI3_Scorer:
 
     def score_and_size(self, signal: dict, capital: float = TOTAL_CAPITAL) -> dict:
         """Returns signal with 'recommended_lots', 'confidence_score', 'size_multiplier'."""
-        max_notional = capital * MAX_POSITION_PCT
-        margin_per_lot = signal.get('margin_per_lot', 50_000)
+        pair        = signal['pair']
+        entry_price = signal.get('entry_price', 0.0)
+        holding     = signal.get('holding_period', 5)
+        confidence  = signal['hmm_confidence_at_signal']
 
-        # Confidence-based sizing (always computed; used in shadow mode)
-        confidence = signal['hmm_confidence_at_signal']
         if confidence >= 0.70:
             conf_multiplier = 1.0
         elif confidence >= 0.50:
             conf_multiplier = 0.75
         else:
             conf_multiplier = 0.50
+
+        multiplier = conf_multiplier
 
         if self.bandit is not None:
             meta_score = signal.get('meta_labeler_score', 0.6)
@@ -44,23 +111,120 @@ class AI3_Scorer:
             signal['bandit_context'] = context.tolist()
 
             if self.bandit.trade_count >= self.bandit.MIN_TRADES_ACTIVATE:
-                # Active mode: bandit controls sizing
-                multiplier = self.bandit.SIZE_MULTIPLIERS[action]
                 if action == 'SKIP':
-                    signal['recommended_lots'] = 0
+                    signal['recommended_lots'] = 0.0
                     signal['size_multiplier']  = 0.0
                     signal['confidence_score'] = 0.0
                     return signal
-                adjusted_notional          = max_notional * multiplier
-                signal['recommended_lots'] = max(1, int(adjusted_notional / margin_per_lot))
-                signal['size_multiplier']  = multiplier
-                signal['confidence_score'] = confidence * multiplier
-                return signal
-            # else: shadow mode — bandit action logged, confidence sizing used below
+                # Clamped at 1.0: MAX_POSITION_PCT is a hard risk ceiling, so
+                # the bandit may size down but never above it. The LARGE
+                # action previously multiplied the cap by 1.5x and breached it.
+                multiplier = min(self.bandit.SIZE_MULTIPLIERS[action], 1.0)
 
-        # Default: confidence-based sizing
-        adjusted_notional          = max_notional * conf_multiplier
-        signal['recommended_lots'] = max(1, int(adjusted_notional / margin_per_lot))
-        signal['confidence_score'] = confidence * conf_multiplier
-        signal['size_multiplier']  = conf_multiplier
+        signal['recommended_lots'] = size_position(
+            pair, entry_price, holding, capital, multiplier)
+        signal['size_multiplier']  = multiplier
+        signal['confidence_score'] = confidence * multiplier
         return signal
+
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+
+def _verification_check():
+    print("=== Step 11 — AI 3 Scorer verification (6 tests) ===\n")
+    passed = 0
+    capital = 1_350_000
+
+    # Test 1: realised risk stays within budget
+    lots = size_position('EURUSD', 1.0850, 5, capital)
+    stop = 1.0850 * FX_STOP[5]
+    risk = lots * CONTRACT_SIZE['EURUSD'] * stop
+    budget = capital * MAX_POSITION_PCT
+    result = 0 < risk <= budget
+    print(f"  Test 1 — Risk within budget:              "
+          f"{'PASS' if result else 'FAIL'} ({lots} lots, risk {risk:,.0f} <= {budget:,.0f})")
+    passed += result
+
+    # Test 2: fractional lots survive. Small capital must produce a micro
+    # lot, not get floored to 0 and then forced up to 1.0.
+    lots = size_position('EURUSD', 1.0850, 2, 10_000)
+    result = 0 < lots < 1.0
+    print(f"  Test 2 — Fractional lot preserved:        "
+          f"{'PASS' if result else 'FAIL'} ({lots} lots)")
+    passed += result
+
+    # Test 3: quantised to the broker lot step
+    lots = size_position('GBPUSD', 1.2700, 5, capital)
+    result = abs(round(lots / MIN_LOT) - (lots / MIN_LOT)) < 1e-6
+    print(f"  Test 3 — Quantised to {MIN_LOT} step:         "
+          f"{'PASS' if result else 'FAIL'} ({lots} lots)")
+    passed += result
+
+    # Test 4: JPY quote conversion. USDJPY loss accrues in yen, so sizing
+    # must divide by the rate; skipping that oversizes by ~150x.
+    lots_eur = size_position('EURUSD', 1.0850, 5, capital)
+    lots_jpy = size_position('USDJPY', 150.00, 5, capital)
+    result = 0 < lots_jpy < lots_eur * 5
+    print(f"  Test 4 — JPY quote conversion:            "
+          f"{'PASS' if result else 'FAIL'} (EURUSD {lots_eur}, USDJPY {lots_jpy})")
+    passed += result
+
+    # Test 5: gold uses the 100oz contract and its widened stop
+    lots = size_position('XAUUSD', 2000.0, 5, capital)
+    stop = 2000.0 * FX_STOP[5] * SYMBOL_STOP_MULTIPLIER['XAUUSD']
+    risk = lots * CONTRACT_SIZE['XAUUSD'] * stop
+    result = 0 < risk <= capital * MAX_POSITION_PCT
+    print(f"  Test 5 — XAUUSD contract + wider stop:    "
+          f"{'PASS' if result else 'FAIL'} ({lots} lots, risk {risk:,.0f})")
+    passed += result
+
+    # Test 6: bandit LARGE cannot exceed the position cap
+    class _FakeBandit:
+        ACTIONS = ['SKIP', 'SMALL', 'MEDIUM', 'LARGE']
+        SIZE_MULTIPLIERS = {'SKIP': 0, 'SMALL': 0.5, 'MEDIUM': 1.0, 'LARGE': 1.5}
+        MIN_TRADES_ACTIVATE = 200
+        trade_count = 500
+        def build_context(self, signal, meta):
+            import numpy as np
+            return np.zeros(10)
+        def select_action(self, context, meta):
+            return 'LARGE'
+
+    scorer = AI3_Scorer(bandit=_FakeBandit())
+    sig = scorer.score_and_size({
+        'pair': 'EURUSD', 'entry_price': 1.0850, 'holding_period': 5,
+        'hmm_confidence_at_signal': 0.80,
+    }, capital)
+    risk = (sig['recommended_lots'] * CONTRACT_SIZE['EURUSD']
+            * 1.0850 * FX_STOP[5])
+    result = sig['size_multiplier'] <= 1.0 and risk <= capital * MAX_POSITION_PCT
+    print(f"  Test 6 — Bandit LARGE respects cap:       "
+          f"{'PASS' if result else 'FAIL'} (mult {sig['size_multiplier']}, risk {risk:,.0f})")
+    passed += result
+
+    # Test 7: with the lot cap lifted, risk-based sizing should consume the
+    # budget rather than sit far under it. The other tests all clamp at
+    # MAX_LOTS_BY_PERIOD, so without this the risk math is never exercised.
+    import unittest.mock as mock
+    with mock.patch.dict('agents.ai3_scorer.MAX_LOTS_BY_PERIOD', {5: 1000}):
+        lots = size_position('EURUSD', 1.0850, 5, capital)
+    risk = lots * CONTRACT_SIZE['EURUSD'] * 1.0850 * FX_STOP[5]
+    budget = capital * MAX_POSITION_PCT
+    utilisation = risk / budget
+    result = 0.95 <= utilisation <= 1.0
+    print(f"  Test 7 — Budget utilisation (cap lifted): "
+          f"{'PASS' if result else 'FAIL'} ({lots} lots, {utilisation:.1%} of budget)")
+    passed += result
+
+    print(f"\n  {passed}/7 tests passed.")
+    print("  PASS — all 7 unit tests passed." if passed == 7
+          else "  FAIL — some unit tests failed. See above.")
+    print("\n  NOTE: tests 1/3/4/5 clamp at MAX_LOTS_BY_PERIOD, so their lot")
+    print("  counts reflect that cap rather than the risk calculation.")
+    print("\n=== Step 11 complete ===")
+
+
+if __name__ == '__main__':
+    _verification_check()

@@ -29,17 +29,40 @@ class BayesianThresholdOptimizer:
     HARD_BOUNDS = {
         'z_21d_threshold':   (-3.0, -1.5),
         'rsi_2_threshold':   (5, 15),
-        'gap_pct_threshold': (-0.015, -0.007),
-        'z_21d_currency':    (-2.5, -1.2),
+        # Spot FX barely gaps intraweek; only the Sunday reopen gaps
+        # meaningfully, and rarely past 0.5%. The old (-1.5%, -0.7%) band
+        # was sized for NSE overnight index gaps and would never trigger.
+        'gap_pct_threshold': (-0.006, -0.001),
+        'cross_spread_z':    (-3.0, -1.5),
     }
     SHADOW_MODE_UNTIL = 50
 
     _DEFAULTS = {
         'z_21d_threshold':   -2.0,
         'rsi_2_threshold':   10,
-        'gap_pct_threshold': -0.01,
-        'z_21d_currency':    -1.8,
+        'gap_pct_threshold': -0.003,
+        'cross_spread_z':    -2.0,
     }
+
+    # Callers hand us the feature that fired; the optimizer tunes the
+    # threshold applied to it. Without this mapping every observation lands
+    # under a key HARD_BOUNDS does not contain, and — because the GP fit is
+    # wrapped in a broad except — the failure is silent and the thresholds
+    # never move.
+    _FEATURE_TO_PARAM = {
+        'z_21d':            'z_21d_threshold',
+        'rsi_2':            'rsi_2_threshold',
+        'gap_pct':          'gap_pct_threshold',
+        'gap_unfilled_eod': 'gap_pct_threshold',
+        'spread_z':         'cross_spread_z',
+    }
+
+    @classmethod
+    def resolve_param(cls, name: str) -> str:
+        """Accept either a feature name or a param name; return the param."""
+        if name in cls.HARD_BOUNDS:
+            return name
+        return cls._FEATURE_TO_PARAM.get(name, 'z_21d_threshold')
 
     def __init__(self):
         self.trade_count = 0
@@ -78,6 +101,7 @@ class BayesianThresholdOptimizer:
             pass
 
     def record_outcome(self, threshold_used: float, param_name: str, pnl_pct: float):
+        param_name = self.resolve_param(param_name)
         self.observations.append({
             'param':     param_name,
             'threshold': threshold_used,
@@ -96,6 +120,13 @@ class BayesianThresholdOptimizer:
         relevant = [o for o in self.observations if o['param'] == param_name]
         if len(relevant) < 20:
             return
+
+        # Resolved before the try block: an unknown param is a wiring bug,
+        # and the broad except below would otherwise bury it forever.
+        if param_name not in self.HARD_BOUNDS:
+            raise KeyError(
+                f"Unknown optimizer param {param_name!r}; "
+                f"expected one of {sorted(self.HARD_BOUNDS)}")
 
         thresholds = np.array([o['threshold'] for o in relevant])
         pnls       = np.array([o['pnl']       for o in relevant])
