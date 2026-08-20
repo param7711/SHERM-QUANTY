@@ -14,14 +14,35 @@ import math
 from config import (
     TOTAL_CAPITAL, MAX_POSITION_PCT, CONTRACT_SIZE, MIN_LOT,
     MAX_LOTS_BY_PERIOD, FX_STOP, SYMBOL_STOP_MULTIPLIER, PAIR_LEGS,
-    ACCOUNT_CURRENCY,
+    ACCOUNT_CURRENCY, EDGE_STOP_PCT, EDGE_RISK_PCT, RISK_PER_TRADE_PCT,
+    RL_STOP_BOUNDS, BROKER_LEVERAGE, DRAWDOWN_HALT_PCT, MAX_POSITIONS_TOTAL,
 )
 
 
-def stop_distance_pct(pair: str, holding_period: int) -> float:
-    """Stop as a fraction of price, widened for high-volatility symbols."""
-    base = FX_STOP.get(holding_period, 0.015)
-    return base * SYMBOL_STOP_MULTIPLIER.get(pair, 1.0)
+def stop_distance_pct(pair: str, holding_period: int,
+                      edge_id: str = None, rl_multiplier: float = 1.0) -> float:
+    """
+    Stop as a fraction of price.
+
+    Precedence: the edge's own stop, else the holding-period default. Then
+    the symbol multiplier (gold needs more room), then any RL adjustment,
+    clamped to RL_STOP_BOUNDS.
+
+    Widening the stop here does not widen risk — size_position divides by
+    this, so the position shrinks to compensate.
+    """
+    base = EDGE_STOP_PCT.get(edge_id) if edge_id else None
+    if base is None:
+        base = FX_STOP.get(holding_period, 0.015)
+    base *= SYMBOL_STOP_MULTIPLIER.get(pair, 1.0)
+
+    lo, hi = RL_STOP_BOUNDS
+    return base * max(lo, min(rl_multiplier, hi))
+
+
+def risk_pct_for(edge_id: str = None) -> float:
+    """Risk budget for an edge. The invariant the RL layer must not touch."""
+    return EDGE_RISK_PCT.get(edge_id, RISK_PER_TRADE_PCT)
 
 
 def quote_to_account(pair: str, price: float) -> float:
@@ -44,20 +65,25 @@ def quote_to_account(pair: str, price: float) -> float:
 
 
 def size_position(pair: str, entry_price: float, holding_period: int,
-                  capital: float, risk_multiplier: float = 1.0) -> float:
+                  capital: float, risk_multiplier: float = 1.0,
+                  edge_id: str = None, rl_stop_multiplier: float = 1.0) -> float:
     """
     Lots to trade, from risk rather than notional.
 
-    Risk budget is capital x MAX_POSITION_PCT x multiplier. Loss at the stop
-    is lots x contract_size x stop_distance, converted to account currency.
-    Solving for lots and quantising down to MIN_LOT keeps the realised risk
-    at or under budget — rounding up would breach it.
+    Risk budget is capital x risk_pct x multiplier. Loss at the stop is
+    lots x contract_size x stop_distance, converted to account currency.
+    Solving for lots and quantising down to MIN_LOT keeps realised risk at
+    or under budget — rounding up would breach it.
+
+    Because stop_distance is in the denominator, an edge with a wider stop
+    automatically takes a smaller position for identical dollar risk.
     """
     if entry_price <= 0:
         return 0.0
 
-    risk_amount   = capital * MAX_POSITION_PCT * risk_multiplier
-    stop_distance = entry_price * stop_distance_pct(pair, holding_period)
+    risk_amount   = capital * risk_pct_for(edge_id) * risk_multiplier
+    stop_distance = entry_price * stop_distance_pct(
+        pair, holding_period, edge_id, rl_stop_multiplier)
     if stop_distance <= 0:
         return 0.0
 
@@ -73,6 +99,17 @@ def size_position(pair: str, entry_price: float, holding_period: int,
     # full standard lot — a silent over-size of up to 100x on a micro-lot
     # position.
     lots = math.floor(raw_lots / MIN_LOT) * MIN_LOT
+
+    # Margin ceiling. Risk sizing governs the downside; this bounds how much
+    # of the account a single position ties up as collateral, which a very
+    # tight stop would otherwise let balloon.
+    notional_per_lot = (CONTRACT_SIZE[pair] * entry_price
+                        * quote_to_account(pair, entry_price))
+    margin_per_lot   = notional_per_lot / BROKER_LEVERAGE
+    if margin_per_lot > 0:
+        margin_cap_lots = (capital * MAX_POSITION_PCT) / margin_per_lot
+        lots = min(lots, math.floor(margin_cap_lots / MIN_LOT) * MIN_LOT)
+
     lots = min(lots, float(MAX_LOTS_BY_PERIOD.get(holding_period, 1)))
     return round(max(lots, 0.0), 2)
 
@@ -93,6 +130,10 @@ class AI3_Scorer:
         entry_price = signal.get('entry_price', 0.0)
         holding     = signal.get('holding_period', 5)
         confidence  = signal['hmm_confidence_at_signal']
+        edge_id     = signal.get('edge_id')
+        # Set by the RL layer when it wants a wider or tighter stop than the
+        # edge's default. Risk is unaffected — size absorbs the change.
+        rl_stop     = signal.get('rl_stop_multiplier', 1.0)
 
         if confidence >= 0.70:
             conf_multiplier = 1.0
@@ -122,9 +163,11 @@ class AI3_Scorer:
                 multiplier = min(self.bandit.SIZE_MULTIPLIERS[action], 1.0)
 
         signal['recommended_lots'] = size_position(
-            pair, entry_price, holding, capital, multiplier)
+            pair, entry_price, holding, capital, multiplier, edge_id, rl_stop)
         signal['size_multiplier']  = multiplier
         signal['confidence_score'] = confidence * multiplier
+        signal['stop_distance_pct'] = stop_distance_pct(
+            pair, holding, edge_id, rl_stop)
         return signal
 
 
@@ -139,9 +182,9 @@ def _verification_check():
 
     # Test 1: realised risk stays within budget
     lots = size_position('EURUSD', 1.0850, 5, capital)
-    stop = 1.0850 * FX_STOP[5]
+    stop = 1.0850 * stop_distance_pct('EURUSD', 5)
     risk = lots * CONTRACT_SIZE['EURUSD'] * stop
-    budget = capital * MAX_POSITION_PCT
+    budget = capital * RISK_PER_TRADE_PCT
     result = 0 < risk <= budget
     print(f"  Test 1 — Risk within budget:              "
           f"{'PASS' if result else 'FAIL'} ({lots} lots, risk {risk:,.0f} <= {budget:,.0f})")
@@ -210,16 +253,52 @@ def _verification_check():
     import unittest.mock as mock
     with mock.patch.dict('agents.ai3_scorer.MAX_LOTS_BY_PERIOD', {5: 1000}):
         lots = size_position('EURUSD', 1.0850, 5, capital)
-    risk = lots * CONTRACT_SIZE['EURUSD'] * 1.0850 * FX_STOP[5]
-    budget = capital * MAX_POSITION_PCT
+    risk = lots * CONTRACT_SIZE['EURUSD'] * 1.0850 * stop_distance_pct('EURUSD', 5)
+    budget = capital * RISK_PER_TRADE_PCT
     utilisation = risk / budget
     result = 0.95 <= utilisation <= 1.0
     print(f"  Test 7 — Budget utilisation (cap lifted): "
           f"{'PASS' if result else 'FAIL'} ({lots} lots, {utilisation:.1%} of budget)")
     passed += result
 
-    print(f"\n  {passed}/7 tests passed.")
-    print("  PASS — all 7 unit tests passed." if passed == 7
+    # Test 8 — the core property: moving the stop must NOT move risk.
+    # This is what lets each edge carry its own stop and lets the RL layer
+    # retune one mid-flight without changing exposure.
+    with mock.patch.dict('agents.ai3_scorer.MAX_LOTS_BY_PERIOD', {5: 10_000}):
+        risks = []
+        for mult in (0.5, 1.0, 2.0):
+            lots = size_position('EURUSD', 1.0850, 5, capital,
+                                 edge_id='SEED-001', rl_stop_multiplier=mult)
+            stop = 1.0850 * stop_distance_pct('EURUSD', 5, 'SEED-001', mult)
+            risks.append(lots * CONTRACT_SIZE['EURUSD'] * stop)
+    spread = (max(risks) - min(risks)) / max(risks)
+    result = spread < 0.02      # within quantisation error
+    print(f"  Test 8 — Risk invariant to stop width:    "
+          f"{'PASS' if result else 'FAIL'} "
+          f"(risks {', '.join(f'{r:,.0f}' for r in risks)}; spread {spread:.2%})")
+    passed += result
+
+    # Test 9 — per-edge stops actually differ, and the wider-stopped edge
+    # takes the smaller position.
+    with mock.patch.dict('agents.ai3_scorer.MAX_LOTS_BY_PERIOD', {5: 10_000}):
+        tight = size_position('EURUSD', 1.0850, 5, capital, edge_id='SEED-003')
+        wide  = size_position('EURUSD', 1.0850, 5, capital, edge_id='SEED-004')
+    result = wide < tight
+    print(f"  Test 9 — Wider stop => smaller position:  "
+          f"{'PASS' if result else 'FAIL'} "
+          f"(SEED-003 {tight}, SEED-004 {wide})")
+    passed += result
+
+    # Test 10 — worst case across all 8 slots stays inside the halt.
+    worst = max(EDGE_RISK_PCT.values()) * 8
+    result = worst <= DRAWDOWN_HALT_PCT
+    print(f"  Test 10 — 8 concurrent stops < halt:      "
+          f"{'PASS' if result else 'FAIL'} "
+          f"({worst:.1%} vs {DRAWDOWN_HALT_PCT:.1%} halt)")
+    passed += result
+
+    print(f"\n  {passed}/10 tests passed.")
+    print("  PASS — all 10 unit tests passed." if passed == 10
           else "  FAIL — some unit tests failed. See above.")
     print("\n  NOTE: tests 1/3/4/5 clamp at MAX_LOTS_BY_PERIOD, so their lot")
     print("  counts reflect that cap rather than the risk calculation.")
