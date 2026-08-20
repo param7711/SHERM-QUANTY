@@ -1,11 +1,17 @@
 """
 Step 2 — Historical data acquisition.
-Downloads daily OHLCV for all MVP instruments via yfinance.
-Saves as data/raw/{instrument}_daily.parquet.
+Downloads daily OHLC for the 7 traded forex majors, plus NIFTY and India
+VIX which the regime engine consumes as macro inputs.
+Saves as data/raw/{name}_daily.parquet.
+
+yfinance daily bars are adequate for backtesting daily-horizon edges, but
+they carry no bid/ask spread. Section 19.2 of the architecture calls for a
+broker/vendor feed with spread and swap data before paper trading — this
+module is the sandbox-friendly stand-in until that source is chosen.
 
 When yfinance is unavailable (e.g. sandboxed env), generates calibrated
-synthetic data per instrument so downstream steps can proceed. Replace
-with real data on a machine with internet access.
+synthetic data so downstream steps can proceed. Replace with real data on
+a machine with internet access.
 """
 
 import os
@@ -17,25 +23,22 @@ import yfinance as yf
 warnings.filterwarnings('ignore')
 
 YFINANCE_TICKERS = {
-    # Indices
-    'NIFTY':       '^NSEI',
-    'BANKNIFTY':   '^NSEBANK',
-    'FINNIFTY':    'NIFTY_FIN_SERVICE.NS',
-    'MIDCPNIFTY':  '^NSMIDCP',
-    'VIX':         '^INDIAVIX',
-    # Commodities (CME proxies for MCX)
-    'GOLD_USD':    'GC=F',
-    'SILVER_USD':  'SI=F',
-    'CRUDE_USD':   'CL=F',
-    'COPPER_USD':  'HG=F',
-    # Currencies
-    'USDINR':      'INR=X',
-    'EURINR':      'EURINR=X',
-    'GBPINR':      'GBPINR=X',
-    'JPYINR':      'JPYINR=X',
+    # Traded universe — 7 forex majors
     'EURUSD':      'EURUSD=X',
     'GBPUSD':      'GBPUSD=X',
     'USDJPY':      'JPY=X',
+    'USDCHF':      'CHF=X',
+    'AUDUSD':      'AUDUSD=X',
+    'USDCAD':      'CAD=X',
+    'NZDUSD':      'NZDUSD=X',
+    # Gold, quoted directly against USD. GC=F (COMEX front-month futures) is
+    # the yfinance stand-in for spot XAUUSD; swap for the broker feed before
+    # paper trading, since futures carry a basis that spot does not.
+    'XAUUSD':      'GC=F',
+    # Regime engine inputs — not traded, but required by
+    # regime_engine_sherm.py as the macro risk-on/risk-off filter.
+    'NIFTY':       '^NSEI',
+    'VIX':         '^INDIAVIX',
 }
 
 START_DATE = '2010-01-01'
@@ -44,22 +47,16 @@ END_DATE   = pd.Timestamp.today().strftime('%Y-%m-%d')
 # Calibration parameters for synthetic fallback
 # (start_price, ann_drift, ann_vol)
 SYNTHETIC_CALIBRATION = {
-    'NIFTY':       (5200,    0.115, 0.16),
-    'BANKNIFTY':   (9000,    0.130, 0.20),
-    'FINNIFTY':    (8000,    0.110, 0.18),
-    'MIDCPNIFTY':  (6000,    0.090, 0.20),
-    'VIX':         (16.0,    0.000, 0.80),  # special: mean-reverting
-    'GOLD_USD':    (1100,    0.060, 0.15),
-    'SILVER_USD':  (17.0,    0.040, 0.28),
-    'CRUDE_USD':   (80.0,    0.000, 0.40),
-    'COPPER_USD':  (3.50,    0.025, 0.22),
-    'USDINR':      (46.0,    0.040, 0.06),
-    'EURINR':      (65.0,    0.020, 0.08),
-    'GBPINR':      (75.0,    0.022, 0.09),
-    'JPYINR':      (0.50,    0.005, 0.09),
     'EURUSD':      (1.43,   -0.020, 0.08),
     'GBPUSD':      (1.61,   -0.020, 0.08),
     'USDJPY':      (93.0,    0.030, 0.09),
+    'USDCHF':      (1.04,   -0.010, 0.09),
+    'AUDUSD':      (0.90,   -0.015, 0.11),
+    'USDCAD':      (1.05,    0.015, 0.07),
+    'NZDUSD':      (0.72,   -0.010, 0.12),
+    'XAUUSD':      (1100,    0.060, 0.16),
+    'NIFTY':       (5200,    0.115, 0.16),
+    'VIX':         (16.0,    0.000, 0.80),  # special: mean-reverting
 }
 
 

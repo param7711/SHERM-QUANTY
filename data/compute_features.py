@@ -1,7 +1,7 @@
 """
-Step 4 — Feature matrix computation.
-Computes 22 underlying-level features per instrument per date and saves
-to data/processed/{instrument}_features.parquet.
+Step 3 — Feature matrix computation.
+Computes 22 features (20 price + 2 carry) per pair per date and saves
+to data/processed/{pair}_features.parquet.
 """
 
 import os
@@ -10,6 +10,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
+
+from config import FX_PAIRS
+from feature_definitions import (
+    FEATURE_NAMES, carry_differential, carry_direction,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -40,10 +45,10 @@ def _compute_streak(series: pd.Series, direction: str) -> pd.Series:
 # Core feature computation
 # ---------------------------------------------------------------------------
 
-def compute_underlying_features(df: pd.DataFrame, name: str) -> pd.DataFrame:
+def compute_pair_features(df: pd.DataFrame, pair: str) -> pd.DataFrame:
     """
-    Input: OHLCV dataframe for one instrument.
-    Output: dataframe with all 28 features as columns.
+    Input: OHLC dataframe for one forex pair.
+    Output: dataframe with all 22 features as columns.
     """
     close = df['close']
     open_ = df['open']
@@ -77,8 +82,12 @@ def compute_underlying_features(df: pd.DataFrame, name: str) -> pd.DataFrame:
     features['gap_pct']         = (open_ - close.shift(1)) / close.shift(1)
     features['gap_unfilled_eod'] = ((features['gap_pct'] < -0.01) & (close < close.shift(1))).astype(int)
 
-    features['underlying'] = name
-    features['close']      = close
+    # 2 carry features — constant per pair given a policy-rate snapshot
+    features['carry_differential'] = carry_differential(pair)
+    features['carry_direction']    = carry_direction(pair)
+
+    features['pair']  = pair
+    features['close'] = close
 
     return features.dropna(subset=['ret_1d', 'z_21d', 'rsi_2'])
 
@@ -90,16 +99,17 @@ def compute_underlying_features(df: pd.DataFrame, name: str) -> pd.DataFrame:
 def compute_all(raw_dir: str = 'data/raw',
                 out_dir: str = 'data/processed') -> list:
     os.makedirs(out_dir, exist_ok=True)
-    parquets = [f for f in os.listdir(raw_dir) if f.endswith('_daily.parquet')]
     summary = []
-    for fname in sorted(parquets):
-        name = fname.replace('_daily.parquet', '')
-        df = pd.read_parquet(os.path.join(raw_dir, fname))
+    for pair in FX_PAIRS:
+        raw_path = os.path.join(raw_dir, f'{pair}_daily.parquet')
+        if not os.path.exists(raw_path):
+            continue
+        df = pd.read_parquet(raw_path)
         df.index = pd.to_datetime(df.index)
-        feats = compute_underlying_features(df, name)
-        out_path = os.path.join(out_dir, f'{name}_features.parquet')
+        feats = compute_pair_features(df, pair)
+        out_path = os.path.join(out_dir, f'{pair}_features.parquet')
         feats.to_parquet(out_path)
-        summary.append({'instrument': name, 'rows': len(feats), 'path': out_path})
+        summary.append({'pair': pair, 'rows': len(feats), 'path': out_path})
     return summary
 
 
@@ -108,52 +118,35 @@ def compute_all(raw_dir: str = 'data/raw',
 # ---------------------------------------------------------------------------
 
 def _verification_check():
-    print("=== Step 4 — Feature Matrix verification ===\n")
+    print("=== Step 3 — Feature Matrix verification (forex) ===\n")
 
-    nifty_raw_path = 'data/raw/NIFTY_daily.parquet'
-    if not os.path.exists(nifty_raw_path):
-        print("  [skip] data/raw/NIFTY_daily.parquet not found. Run Step 2 first.")
+    if not os.path.exists('data/raw/EURUSD_daily.parquet'):
+        print("  [skip] data/raw/EURUSD_daily.parquet not found. Run Step 2 first.")
         return
 
     summary = compute_all()
-    print(f"  Computed features for {len(summary)} instruments.")
+    print(f"  Computed features for {len(summary)} pairs.")
 
-    nifty_feat_path = 'data/processed/NIFTY_features.parquet'
-    df = pd.read_parquet(nifty_feat_path)
+    df = pd.read_parquet('data/processed/EURUSD_features.parquet')
 
-    # z_21d oscillates around 0
     z_mean = df['z_21d'].mean()
     z_std  = df['z_21d'].std()
-    print(f"\n  NIFTY z_21d: mean={z_mean:.3f} (expect ~0), std={z_std:.3f} (expect ~1)")
+    print(f"\n  EURUSD z_21d: mean={z_mean:.3f} (expect ~0), std={z_std:.3f} (expect ~1)")
 
-    # rsi_2 extreme hits
     rsi_lo = (df['rsi_2'] < 10).sum()
     rsi_hi = (df['rsi_2'] > 90).sum()
     years  = len(df) / 252
-    print(f"  NIFTY rsi_2: <10 hits={rsi_lo} ({rsi_lo/years:.1f}/yr), >90 hits={rsi_hi} ({rsi_hi/years:.1f}/yr)")
+    print(f"  EURUSD rsi_2: <10 hits={rsi_lo} ({rsi_lo/years:.1f}/yr), >90 hits={rsi_hi} ({rsi_hi/years:.1f}/yr)")
 
-    # 5 most extreme z_21d readings
-    extreme = df['z_21d'].abs().nlargest(5)
-    print(f"\n  5 most extreme z_21d readings:")
-    for date, val in extreme.items():
-        row = df.loc[date]
-        print(f"    {str(date.date()):<12}  z_21d={row['z_21d']:+.3f}  close={row['close']:.1f}")
+    print(f"\n  Carry: differential={df['carry_differential'].iloc[-1]:+.4f}, "
+          f"direction={int(df['carry_direction'].iloc[-1]):+d}")
 
-    # Column count check
-    expected_cols = [
-        'ret_1d', 'mom_5d', 'mom_10d', 'mom_20d', 'mom_60d',
-        'vol_5d', 'vol_20d', 'vol_ratio_vols', 'vol_expanding',
-        'z_21d', 'rsi_2', 'rsi_14', 'rolling_max_252', 'rolling_min_252',
-        'pct_from_hi', 'pct_from_lo', 'ret_zscore', 'ret_skew_20',
-        'up_streak', 'down_streak', 'gap_pct', 'gap_unfilled_eod',
-        'underlying', 'close',
-    ]
+    expected_cols = FEATURE_NAMES + ['pair', 'close']
     missing = [c for c in expected_cols if c not in df.columns]
     print(f"\n  Column check: {len(df.columns)} cols, missing={missing}")
     print(f"  Rows after dropna: {len(df)}")
-    print(f"  Nulls in key cols: ret_1d={df['ret_1d'].isna().sum()}, z_21d={df['z_21d'].isna().sum()}, rsi_2={df['rsi_2'].isna().sum()}")
 
-    print("\n=== Step 4 complete ===")
+    print("\n=== Step 3 complete ===")
 
 
 if __name__ == '__main__':
