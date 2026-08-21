@@ -134,14 +134,16 @@ _daily_reset_done_for: str = ''
 
 
 def _get_trade_history():
-    import pandas as pd, sqlite3
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql("SELECT * FROM execution_quality_log", conn)
-    except Exception:
-        df = pd.DataFrame()
-    conn.close()
-    return df
+    """
+    Meta-labeler training frame.
+
+    Reads rl_replay_buffer, NOT execution_quality_log. The execution log
+    records fills — price, slippage, spread, swap — and none of the
+    signal-time features the model trains on, so retraining from it raised
+    KeyError on nearly every feature name.
+    """
+    from rl.xgb_meta_labeler import load_training_frame
+    return load_training_frame(DB_PATH)
 
 
 def _run_morning_regime(today: str):

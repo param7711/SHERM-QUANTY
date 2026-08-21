@@ -52,8 +52,12 @@ class AI5_FeedbackLoop:
 
         if self.bandit is not None and 'bandit_action' in outcome:
             action  = outcome['bandit_action']
-            context = np.array(outcome.get('bandit_context') or [0.0] * 10)
-            reward  = float(outcome.get('net_return_pct', 0.0))
+            # Fallback dimensionality follows the live bandit's own feature
+            # count, not a literal — a mismatch here shape-errors against
+            # its A matrix rather than silently producing garbage.
+            fallback = [0.0] * self.bandit.n_features
+            context  = np.array(outcome.get('bandit_context') or fallback)
+            reward   = float(outcome.get('net_return_pct', 0.0))
             self.bandit.update(action, context, reward)
 
         if self.bayesian_optimizer is not None:
@@ -172,23 +176,33 @@ class AI5_FeedbackLoop:
         conn.close()
 
     def _write_replay_buffer(self, outcome: dict):
-        """Add trade to RL replay buffer."""
+        """
+        Add trade to RL replay buffer.
+
+        Keys here must match rl.xgb_meta_labeler.XGBMetaLabeler.FEATURES
+        exactly — load_training_frame() expands state_features_json
+        straight into training columns by name. The previous version
+        snapshotted 6 of 14 names, so retraining silently trained on mostly
+        missing (zero-filled) columns.
+        """
         conn = sqlite3.connect(DB_PATH)
         state_features = {k: outcome.get(k) for k in [
-            'z_21d', 'rsi_2', 'mom_5d', 'vol_expanding',
-            'hmm_confidence', 'regime_encoded',
+            'trigger_value', 'hmm_confidence', 'regime_encoded', 'vix_level',
+            'recent_win_rate_edge', 'vol_expanding', 'z_21d', 'rsi_2', 'mom_5d',
+            'day_of_week', 'time_since_last_trade_edge', 'carry_direction',
+            'spread_pips_at_signal',
         ]}
         conn.execute(
             """INSERT OR IGNORE INTO rl_replay_buffer
-               (transition_id, edge_id, instrument_class, holding_period,
+               (transition_id, edge_id, pair, holding_period,
                 regime_at_trade, hmm_confidence_at_trade, regime_model_version,
-                state_features_json, action, reward, synthetic_pricing_source,
+                state_features_json, action, reward,
                 trade_date, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 str(uuid.uuid4()),
                 outcome.get('edge_id'),
-                outcome.get('instrument_class'),
+                outcome.get('pair'),
                 outcome.get('holding_period'),
                 outcome.get('regime_at_entry'),
                 outcome.get('hmm_confidence'),
@@ -196,7 +210,6 @@ class AI5_FeedbackLoop:
                 json.dumps(state_features),
                 outcome.get('direction', 'LONG'),
                 outcome.get('net_return_pct', 0),
-                int(outcome.get('synthetic_pricing_used', 0)),
                 outcome.get('signal_date'),
                 datetime.now().isoformat(),
             )

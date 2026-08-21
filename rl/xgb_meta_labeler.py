@@ -33,12 +33,12 @@ class XGBMetaLabeler:
     MIN_TRADES_ACTIVATE = META_LABELER_MIN_TRADES
     THRESHOLD           = META_LABELER_THRESHOLD
 
-    # Names must match execution_quality_log columns exactly — retrain()
-    # selects by these names while predict() feeds _extract_features
-    # positionally, so a mismatch trains and infers on different things.
-    # 'days_to_expiry' was removed: spot FX has no expiry, and the column
-    # never existed in the table, so retrain() raised KeyError on any
-    # non-empty history.
+    # These are SIGNAL-TIME features, so the training frame must come from
+    # rl_replay_buffer.state_features_json — not execution_quality_log,
+    # which records what happened at fill and stores none of them. Pointing
+    # retrain() at the execution log (as the scheduler used to) raises
+    # KeyError on nearly every name here.
+    # 'days_to_expiry' was also removed: spot FX has no expiry.
     FEATURES = [
         'trigger_value', 'hmm_confidence', 'regime_encoded',
         'vix_level', 'holding_period',
@@ -85,12 +85,34 @@ class XGBMetaLabeler:
         return float(self.model.predict_proba([features])[0][1])
 
     def retrain(self, trade_history: pd.DataFrame):
-        """Called weekly. Trains on all available labeled outcomes."""
+        """
+        Called weekly. Trains on all available labeled outcomes.
+
+        trade_history must carry every name in FEATURES plus
+        net_return_pct — use load_training_frame() to build it from the
+        replay buffer rather than passing the execution log.
+        """
         if len(trade_history) < self.MIN_TRADES_ACTIVATE:
             return
 
+        missing = [c for c in self.FEATURES + ['net_return_pct']
+                   if c not in trade_history.columns]
+        if missing:
+            raise KeyError(
+                f"Training frame is missing {missing}. Signal-time features "
+                f"come from rl_replay_buffer.state_features_json; build the "
+                f"frame with load_training_frame().")
+
         X = trade_history[self.FEATURES].fillna(0)
         y = (trade_history['net_return_pct'] > 0).astype(int)
+
+        # A single-class label set trains a model that always predicts that
+        # class. Better to keep the previous model (or none) than to install
+        # a degenerate one.
+        if y.nunique() < 2:
+            print(f"[meta-labeler] skipping retrain: all {len(y)} outcomes "
+                  f"are {'wins' if y.iloc[0] else 'losses'}")
+            return
 
         from xgboost import XGBClassifier
         self.model = XGBClassifier(
@@ -127,3 +149,124 @@ class XGBMetaLabeler:
             'spread_pips_at_signal':      signal.get('spread_pips', 1.0),
         }
         return [values[name] for name in self.FEATURES]
+
+
+def load_training_frame(db_path: str = None) -> pd.DataFrame:
+    """
+    Build a meta-labeler training frame from rl_replay_buffer.
+
+    Each row's state_features_json holds the signal-time snapshot; reward
+    holds the realised net return. Expanding the JSON into columns gives
+    exactly the layout retrain() expects. Rows written before a feature was
+    added simply come back NaN and are filled with 0 at fit time.
+    """
+    import json
+    import sqlite3
+    if db_path is None:
+        from config import DB_PATH as db_path
+
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql(
+            "SELECT state_features_json, reward, holding_period FROM rl_replay_buffer",
+            conn)
+    except Exception:
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for _, r in df.iterrows():
+        try:
+            feats = json.loads(r['state_features_json']) or {}
+        except Exception:
+            feats = {}
+        feats.setdefault('holding_period', r['holding_period'])
+        feats['net_return_pct'] = r['reward']
+        rows.append(feats)
+
+    out = pd.DataFrame(rows)
+    for col in XGBMetaLabeler.FEATURES:
+        if col not in out.columns:
+            out[col] = 0
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+
+def _verification_check():
+    print("=== RL — XGBoost Meta-Labeler verification (4 tests) ===\n")
+    import numpy as np
+    passed = 0
+    labeler = XGBMetaLabeler()
+
+    # Test 1: FEATURES and _extract_features stay aligned. They are keyed by
+    # name now, so a drift raises rather than silently misaligning columns.
+    sig = {'pair': 'EURUSD', 'trigger_value': -2.3, 'holding_period': 5,
+           'hmm_confidence_at_signal': 0.7, 'regime_at_signal': 'SIDEWAYS',
+           'carry_direction': -1, 'spread_pips': 1.2}
+    feats = labeler._extract_features(sig)
+    result = len(feats) == len(labeler.FEATURES)
+    print(f"  Test 1 — Feature vector matches FEATURES: "
+          f"{'PASS' if result else 'FAIL'} ({len(feats)} values)")
+    passed += result
+
+    # Test 2: no expiry feature survives anywhere.
+    result = not any('expiry' in f or f == 'dte' for f in labeler.FEATURES)
+    print(f"  Test 2 — No expiry feature remains:       "
+          f"{'PASS' if result else 'FAIL'}")
+    passed += result
+
+    # Test 3: retrain on a frame missing signal-time columns must raise a
+    # clear error rather than a bare KeyError. This is the failure the
+    # scheduler used to hit every Friday.
+    exec_log_like = pd.DataFrame({
+        'trade_id': range(200), 'pair': ['EURUSD'] * 200,
+        'net_return_pct': [0.01] * 200, 'holding_period': [5] * 200,
+    })
+    try:
+        labeler.retrain(exec_log_like)
+        result, msg = False, 'no error raised'
+    except KeyError as e:
+        result = 'load_training_frame' in str(e)
+        msg = 'clear error'
+    print(f"  Test 3 — Bad frame raises clearly:        "
+          f"{'PASS' if result else 'FAIL'} ({msg})")
+    passed += result
+
+    # Test 4: a well-formed frame trains, and a single-class frame is
+    # refused rather than producing a model that always says the same thing.
+    rng = np.random.default_rng(0)
+    n = 200
+    good = pd.DataFrame({f: rng.normal(size=n) for f in labeler.FEATURES})
+    good['net_return_pct'] = rng.normal(size=n)
+    try:
+        labeler.retrain(good)
+        trained = labeler.model is not None
+    except Exception as e:
+        trained = False
+        print(f"      (retrain raised: {e})")
+
+    one_class = good.copy()
+    one_class['net_return_pct'] = 0.01
+    before = labeler.model
+    labeler.retrain(one_class)
+    refused = labeler.model is before
+
+    result = trained and refused
+    print(f"  Test 4 — Trains; refuses single-class:    "
+          f"{'PASS' if result else 'FAIL'} (trained={trained}, refused={refused})")
+    passed += result
+
+    print(f"\n  {passed}/4 tests passed.")
+    print("  PASS — all 4 unit tests passed." if passed == 4
+          else "  FAIL — some unit tests failed. See above.")
+
+
+if __name__ == '__main__':
+    _verification_check()
