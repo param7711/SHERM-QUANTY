@@ -166,8 +166,17 @@ class AI3_Scorer:
             pair, entry_price, holding, capital, multiplier, edge_id, rl_stop)
         signal['size_multiplier']  = multiplier
         signal['confidence_score'] = confidence * multiplier
-        signal['stop_distance_pct'] = stop_distance_pct(
-            pair, holding, edge_id, rl_stop)
+        stop_pct = stop_distance_pct(pair, holding, edge_id, rl_stop)
+        signal['stop_distance_pct'] = stop_pct
+
+        # Absolute stop level, for the broker to hold. AI 4 refuses to open
+        # without it, and it must be the SAME distance sizing was derived
+        # from — otherwise realised risk diverges from the budget.
+        if entry_price > 0:
+            signal['stop_price'] = round(
+                entry_price * (1 - stop_pct) if signal.get('direction') == 'LONG'
+                else entry_price * (1 + stop_pct),
+                5)
         return signal
 
 
@@ -297,8 +306,32 @@ def _verification_check():
           f"({worst:.1%} vs {DRAWDOWN_HALT_PCT:.1%} halt)")
     passed += result
 
-    print(f"\n  {passed}/10 tests passed.")
-    print("  PASS — all 10 unit tests passed." if passed == 10
+    # Test 11 — the emitted stop price must sit exactly the sized distance
+    # away, on the correct side. AI 4 hands this to the broker, so a
+    # mismatch here means realised risk silently diverges from budget.
+    scorer = AI3_Scorer()
+    long_sig = scorer.score_and_size({
+        'pair': 'EURUSD', 'entry_price': 1.0850, 'holding_period': 5,
+        'direction': 'LONG', 'edge_id': 'SEED-001',
+        'hmm_confidence_at_signal': 0.75,
+    }, capital)
+    short_sig = scorer.score_and_size({
+        'pair': 'EURUSD', 'entry_price': 1.0850, 'holding_period': 5,
+        'direction': 'SHORT', 'edge_id': 'SEED-001',
+        'hmm_confidence_at_signal': 0.75,
+    }, capital)
+    expected_pct = stop_distance_pct('EURUSD', 5, 'SEED-001')
+    long_ok  = abs(long_sig['stop_price']  - 1.0850 * (1 - expected_pct)) < 1e-5
+    short_ok = abs(short_sig['stop_price'] - 1.0850 * (1 + expected_pct)) < 1e-5
+    side_ok  = long_sig['stop_price'] < 1.0850 < short_sig['stop_price']
+    result = long_ok and short_ok and side_ok
+    print(f"  Test 11 — Stop price matches sized dist:  "
+          f"{'PASS' if result else 'FAIL'} "
+          f"(long {long_sig['stop_price']}, short {short_sig['stop_price']})")
+    passed += result
+
+    print(f"\n  {passed}/11 tests passed.")
+    print("  PASS — all 11 unit tests passed." if passed == 11
           else "  FAIL — some unit tests failed. See above.")
     print("\n  NOTE: tests 1/3/4/5 clamp at MAX_LOTS_BY_PERIOD, so their lot")
     print("  counts reflect that cap rather than the risk calculation.")

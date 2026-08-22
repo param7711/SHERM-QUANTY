@@ -24,18 +24,30 @@ class AI5_FeedbackLoop:
     Bandit and Bayesian optimizer are updated after every closed trade.
     """
 
-    def __init__(self, bandit=None, bayesian_optimizer=None):
+    def __init__(self, bandit=None, bayesian_optimizer=None, executor=None):
         self.risk_governor      = RiskGovernor()
         self.bandit             = bandit
         self.bayesian_optimizer = bayesian_optimizer
+        self.executor           = executor
         self._ensure_kairos_schema()
 
     def monitor_positions(self, open_positions: list, current_market: dict):
-        """Called at each of 3 daily schedule times."""
+        """
+        Called at each session checkpoint.
+
+        These are DISCRETIONARY exits — regime transition, vol spike,
+        weekend flat. The protective stop is not handled here: it lives at
+        the broker, attached when the position opened, and fires whether or
+        not this process is running. Checkpoint-driven stops would do
+        nothing during the hours between checks, which is most of the day
+        on a 24/5 market.
+        """
+        exits = []
         for position in open_positions:
             should_exit, reason = self.risk_governor.check_mid_hold_exits(position)
             if should_exit:
-                self._execute_exit(position, reason)
+                exits.append((position, reason, self._execute_exit(position, reason)))
+        return exits
 
     def record_trade_outcome(self, trade_id: str, outcome: dict):
         """Called when position closes."""
@@ -66,9 +78,36 @@ class AI5_FeedbackLoop:
             pnl     = float(outcome.get('net_return_pct', 0.0))
             self.bayesian_optimizer.record_outcome(trigger, param, pnl)
 
-    def _execute_exit(self, position: dict, reason: str):
-        """Trigger exit order. In live: calls AI4_Executor. Here: logs the event."""
-        pass
+    def _execute_exit(self, position: dict, reason: str) -> dict:
+        """
+        Route a discretionary exit through AI 4.
+
+        Was a no-op stub: exits were detected and then silently discarded,
+        so a regime-transition or vol-spike exit never actually closed
+        anything. Only the broker-side protective stop was really working.
+
+        With no executor wired (backtest, or a partially assembled system)
+        the decision is returned unrouted rather than being dropped, so a
+        caller can act on it and a test can assert on it.
+        """
+        if self.executor is None:
+            return {'status': 'NOT_ROUTED', 'reason': reason,
+                    'ticket': position.get('ticket')}
+
+        ticket = position.get('ticket')
+        if ticket is None:
+            return {'status': 'NO_TICKET', 'reason': reason}
+
+        result = self.executor.close_position(ticket)
+        result['exit_reason'] = reason
+
+        # An ambiguous close leaves us unsure whether the position is gone.
+        # Surfaced rather than swallowed: the caller must reconcile before
+        # trusting its slot count or exposure totals again.
+        if result.get('requires_reconcile'):
+            print(f"[ai5] exit for ticket {ticket} ({reason}) returned "
+                  f"UNKNOWN — reconcile required")
+        return result
 
     def _write_execution_log(self, trade_id: str, outcome: dict):
         """
@@ -321,7 +360,7 @@ class AI5_FeedbackLoop:
 # ---------------------------------------------------------------------------
 
 def _verification_check():
-    print("=== Step 12 — AI 5 Feedback Loop verification (6 tests) ===\n")
+    print("=== Step 12 — AI 5 Feedback Loop verification (7 tests) ===\n")
     import tempfile
     import shutil
     import unittest.mock as mock
@@ -446,11 +485,38 @@ def _verification_check():
                   f"{'PASS' if result else 'FAIL'} ({params})")
             passed += result
 
+            # Test 7: a discretionary exit actually routes to the executor.
+            # This path was a no-op stub, so vol-spike and regime exits
+            # were detected and then silently discarded.
+            from mt5_bridge.client import MT5BridgeClient
+            from mt5_bridge.fake_server import FakeEAServer
+            from agents.ai4_executor import AI4_Executor
+
+            with FakeEAServer() as srv:
+                bridge = MT5BridgeClient(host=srv.host, port=srv.port, timeout=3)
+                ex     = AI4_Executor(bridge=bridge)
+                opened = ex.execute_signal({
+                    'pair': 'EURUSD', 'direction': 'LONG',
+                    'recommended_lots': 0.10, 'stop_price': 1.0741,
+                    'holding_period': 5, 'edge_id': 'SEED-001',
+                })
+                ai5_ex = AI5_FeedbackLoop(executor=ex)
+                # days_held past the 15-day cap forces a TIME_STOP exit.
+                exits = ai5_ex.monitor_positions(
+                    [{'ticket': opened['ticket'], 'days_held': 99}], {})
+                closed = len(srv.positions) == 0
+                routed = bool(exits) and exits[0][2]['status'] == 'CLOSED'
+            result = closed and routed
+            print(f"  Test 7 — Discretionary exit routes:       "
+                  f"{'PASS' if result else 'FAIL'} "
+                  f"(routed={routed}, broker flat={closed})")
+            passed += result
+
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-    print(f"\n  {passed}/6 tests passed.")
-    print("  PASS — all 6 unit tests passed." if passed == 6
+    print(f"\n  {passed}/7 tests passed.")
+    print("  PASS — all 7 unit tests passed." if passed == 7
           else "  FAIL — some unit tests failed. See above.")
     print("\n=== Step 12 complete ===")
 
