@@ -100,6 +100,31 @@ detail, including everything tried and rejected, is in `FINAL.md`.
 - **yfinance is firewalled in the sandbox.** Only `raw.githubusercontent.com` is
   reachable. FX data was validated against Brexit (−10.84%) and COVID before use.
 
+## TradingView indicator
+
+`tradingview/regdet.pine` — the detector as a Pine Script v5 indicator.
+
+Pine has no EM and no matrices, so the **HMM half of the direction axis cannot
+be ported**. The indicator is the same detector evaluated at `w = 1.0`, where
+the HMM term is multiplied by zero and drops out exactly — the arm the project
+already swept (§7W), and the one that *maximises descriptive fidelity*, which
+is what a chart indicator is for. The intensity axis contains no HMM in the
+original either, so it ports completely.
+
+Diffed bar-by-bar against the engine on EUR/USD 8h, 2,822 bars
+(`harnesses/_pine_verify.py`):
+
+| comparison | agreement |
+|---|---|
+| this logic vs engine at `w=1.0`, same baseline | **100.00%** (port is exact) |
+| expanding vs frozen baseline | 85.68% |
+| engine `w=1.0` vs `w=0.5` (HMM dropped) | 72.08% |
+| **indicator vs the shipped detector** | **69.42%** |
+
+Read the last row honestly: it agrees with the notebook on about **7 bars in
+10**. The 100% row proves the translation is correct; it does not make the
+indicator the same detector. For the notebook's exact labels, run the notebook.
+
 ## Not wired into production
 
 `regime_engine_tactical.py` at the repo root is the production tactical engine

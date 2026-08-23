@@ -1,0 +1,309 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// RegDet — Sherm Quanty market regime detector, TradingView port.
+//
+// =============================================================================
+// READ THIS FIRST — what this IS and what it CANNOT be
+// =============================================================================
+// The notebook detector forms direction as:
+//
+//     bull_mass = (1 - w) * hmm_state_mass  +  w * per_bar_momentum_mass
+//
+// with the shipped w = BAR_DIR_WEIGHT = 0.5. The HMM half needs Gaussian
+// mixture EM over a 9-feature matrix. Pine Script has no EM, no matrices and
+// no linear algebra, so THAT HALF CANNOT BE PORTED. Any claim otherwise would
+// be false.
+//
+// What this indicator is, precisely: the SAME detector evaluated at w = 1.0,
+// where the HMM term is multiplied by zero and drops out EXACTLY. It is not a
+// hand-wave — w is a knob the project already swept end to end under a frozen
+// protocol (W_SWEEP_PROTOCOL.md, master notebook section 7W), and both arms of
+// that sweep were measured:
+//
+//   * PRIMARY (predictive skill) is UNMEASURABLE across the whole w range —
+//     the between-w spread is SMALLER than the noise from merely reseeding the
+//     same w (EUR/USD: 0.0200 vs seed noise 0.4000). So moving w to 1.0 costs
+//     nothing that project could measure.
+//   * SECONDARY (descriptive fidelity — does the emitted direction agree with
+//     the sign of the actual forward move) is MAXIMISED AT w = 1.0
+//     (EUR/USD 0.8712, Nifty 0.9265).
+//
+// For a chart indicator, whose entire job is to colour the bars correctly,
+// descriptive fidelity IS the objective. w = 1.0 is both the only arm Pine can
+// compute and the best-scoring arm on the axis that matters here.
+//
+// -----------------------------------------------------------------------------
+// MEASURED, NOT ASSERTED. This port was diffed bar-by-bar against the real
+// engine on EUR/USD 8h, 2,822 bars (harnesses/_pine_verify.py):
+//
+//   A. this logic vs the engine at w=1.0, same baseline .... 100.00% identical
+//        -> the PORT ITSELF IS EXACT. Every label, every bar.
+//   B. expanding baseline vs the notebook's frozen one ......  85.68% identical
+//        -> what the live-chart baseline costs
+//   C. engine w=1.0 vs w=0.5 (dropping the HMM) .............  72.08% identical
+//        -> what losing the HMM half costs
+//   D. THIS INDICATOR vs the SHIPPED detector ...............  69.42% identical
+//
+// Read D honestly: this agrees with the shipped notebook detector on roughly
+// SEVEN BARS IN TEN, not ten in ten. Occupancy also shifts — SIDEWAYS runs
+// 39.7% here vs 34.5% shipped. An earlier note in this project said w "barely
+// moves anything (~2pp occupancy)"; that was measured on NIFTY and it does NOT
+// hold on EUR/USD 8h, where SIDEWAYS moves 8.3pp. The 100% in (A) proves the
+// translation is right; it does not make this the same detector as the
+// notebook. If you need the notebook's exact labels, run the notebook.
+// -----------------------------------------------------------------------------
+//
+// EVERYTHING ELSE IS A FAITHFUL PORT of the shipped constants and logic:
+// the 5 signed direction features and their weights, the softmax masses, the
+// CONF_L confidence override, the CONFIRM_BARS confirmation delay, trend_z,
+// the Kaufman efficiency ratio, and the full intensity gate WITH hysteresis.
+//
+// ONE HONEST DEVIATION BEYOND w. The notebook freezes the z-score baseline
+// (mu/sd) on the leading 70% of a fixed dataset. A live indicator has no
+// train/test split, so the baseline here is EXPANDING (every bar <= t) by
+// default, or a fixed rolling window if you prefer. Both are strictly causal —
+// no repainting — but neither reproduces the notebook's exact numbers, because
+// the baseline itself is a different quantity. Expect the same SHAPE, not
+// identical labels.
+//
+// NOT A SIGNAL. Measured across 8 runs including Nifty, the 5-label
+// forward-return ordering is BROKEN at every horizon, and on FX 7-13 scorecard
+// rows per instrument are materially BACKWARDS. Treat these labels as STATE /
+// CONTEXT. Do not treat H_BULL as "go long".
+// =============================================================================
+
+//@version=5
+indicator("RegDet — Sherm Quanty regime detector", shorttitle="RegDet", overlay=true, max_labels_count=500)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bars per day. Every window in this detector is DAY-denominated, so it needs
+// to know how many bars make a day on the chart it is running on. Derived from
+// the chart timeframe and the instrument's session length, which is what keeps
+// the horizons economically identical across markets and timeframes.
+//   FX / crypto / gold : 24 session hours  (8h chart -> 3 bars/day)
+//   NSE index          : 6.25              (2h chart -> 3 bars/day)
+// ─────────────────────────────────────────────────────────────────────────────
+grpD = "Bars per day (day-denominated windows)"
+sessionHours = input.float(24.0, "Session hours per day", minval=0.5, maxval=24.0, step=0.25, group=grpD,
+     tooltip="24 for FX/crypto/gold, 6.25 for NSE cash session. Used only to derive bars-per-day from the chart timeframe.")
+bpdMode = input.string("Auto (from timeframe)", "Bars per day", options=["Auto (from timeframe)", "Manual"], group=grpD)
+bpdManual = input.int(3, "Manual bars per day", minval=1, group=grpD)
+
+tfSec = timeframe.in_seconds(timeframe.period)
+bpdAuto = math.max(1, int(math.round(sessionHours * 3600.0 / math.max(tfSec, 1))))
+bpd = bpdMode == "Manual" ? bpdManual : bpdAuto
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHIPPED CONSTANTS — identical to the notebook. Exposed so they are auditable,
+// but the defaults are the shipped values and changing them makes this no
+// longer RegDet.
+// ─────────────────────────────────────────────────────────────────────────────
+grpC = "Shipped constants (defaults = notebook values)"
+CONTEXT_DAYS = input.int(12,   "CONTEXT_DAYS (dist_ma window)", minval=1, group=grpC)
+CONF_L       = input.float(0.50, "CONF_L (low-confidence -> SIDEWAYS)", minval=0.34, maxval=0.99, step=0.01, group=grpC)
+CONFIRM_BARS = input.int(2,    "CONFIRM_BARS (confirmation delay)", minval=1, group=grpC)
+Z_HI         = input.float(0.50, "Z_HI (H enter)",  step=0.05, group=grpC)
+EFF_HI       = input.float(0.35, "EFF_HI (H enter)", step=0.05, group=grpC)
+Z_HI_EXIT    = input.float(0.35, "Z_HI_EXIT (H hold)",  step=0.05, group=grpC)
+EFF_HI_EXIT  = input.float(0.25, "EFF_HI_EXIT (H hold)", step=0.05, group=grpC)
+EFF_WIN      = input.int(9,    "EFF_WIN (efficiency window, BARS not days)", minval=2, group=grpC)
+BAR_DIR_TAU  = input.float(1.0,  "BAR_DIR_TAU (softmax temperature)", minval=0.05, step=0.05, group=grpC)
+
+// Gate hysteresis must never be inverted (exit stricter than entry silently
+// makes the hold branch unreachable). This was audited bug #2 in the project.
+if Z_HI_EXIT > Z_HI or EFF_HI_EXIT > EFF_HI
+    runtime.error("Inverted hysteresis: exit thresholds must be <= enter thresholds (Z_HI_EXIT<=Z_HI, EFF_HI_EXIT<=EFF_HI).")
+
+grpB = "Baseline for z-scores (see header: differs from the notebook)"
+baselineMode = input.string("Expanding (all history)", "Baseline", options=["Expanding (all history)", "Rolling window"], group=grpB,
+     tooltip="The notebook freezes mu/sd on the leading 70% of a fixed dataset. A live chart has no such split. Both options here are causal.")
+baselineLen = input.int(500, "Rolling baseline length (bars)", minval=30, group=grpB)
+
+grpV = "Display"
+showBG     = input.bool(true,  "Colour background by regime", group=grpV)
+bgOpacity  = input.int(80,     "Background transparency", minval=0, maxval=95, group=grpV)
+showTable  = input.bool(true,  "Show state table", group=grpV)
+showMarks  = input.bool(false, "Label regime changes", group=grpV)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day-denominated windows — the master's own BASE_WIN formula.
+// ─────────────────────────────────────────────────────────────────────────────
+MOM_1D_LEN = math.max(2, 1 * bpd)
+MOM_3D_LEN = math.max(2, 3 * bpd)
+MOM_5D_LEN = math.max(2, 5 * bpd)
+SWING_WIN  = math.max(2, CONTEXT_DAYS * bpd)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The 5 SIGNED direction features (BAR_DIR_FEATURES). vol_2h and vol_expansion
+// are structurally barred from the direction score — they measure how BIG a
+// move is, not which way it points. Scoring a violent RALLY as bearish was the
+// bug FIX 1 removed, and it is not reintroduced here.
+// ─────────────────────────────────────────────────────────────────────────────
+r       = math.log(close / close[1])
+f_ret   = r
+f_mom1d = math.sum(r, MOM_1D_LEN)
+f_mom3d = math.sum(r, MOM_3D_LEN)
+f_mom5d = math.sum(r, MOM_5D_LEN)
+ma      = ta.sma(close, SWING_WIN)
+f_dma   = ma > 0 ? (close - ma) / ma : na
+
+// Causal z-score against the chosen baseline. Population sd (ddof=0), matching
+// numpy's default, which is what the notebook uses.
+zscore(float x) =>
+    var float s  = 0.0
+    var float s2 = 0.0
+    var int   n  = 0
+    if not na(x)
+        s  := s + x
+        s2 := s2 + x * x
+        n  := n + 1
+    float emu = n > 0 ? s / n : na
+    float esd = n > 1 ? math.sqrt(math.max(s2 / n - emu * emu, 0.0)) : na
+    float rmu = ta.sma(x, baselineLen)
+    float rsd = ta.stdev(x, baselineLen)      // biased=true -> population sd
+    float mu  = baselineMode == "Rolling window" ? rmu : emu
+    float sd  = baselineMode == "Rolling window" ? rsd : esd
+    na(x) or na(mu) or na(sd) or sd <= 0 ? 0.0 : (x - mu) / sd
+
+z_ret  = zscore(f_ret)
+z_m1d  = zscore(f_mom1d)
+z_m3d  = zscore(f_mom3d)
+z_m5d  = zscore(f_mom5d)
+z_dma  = zscore(f_dma)
+
+// FEATURE_SIGN * FEATURE_MAG, normalised by sum|w| so the composite stays on a
+// z-like scale. ret_2h 1.0, mom_1d/3d/5d 0.4 each, dist_ma 1.0 -> sum 3.2.
+W_SUM     = 3.2
+composite = (1.0 * z_ret + 0.4 * z_m1d + 0.4 * z_m3d + 0.4 * z_m5d + 1.0 * z_dma) / W_SUM
+
+// Re-standardise the composite against ITS own baseline, so the output is a
+// unit-variance z and BAR_DIR_TAU is interpretable.
+score = zscore(composite)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-bar direction masses: softmax over (+s/tau, 0, -s/tau), shift-stabilised
+// exactly as bar_direction_masses() does. SIDE is the plurality only near s~0,
+// which is correct — "no clear direction at this bar" is a real answer.
+// ─────────────────────────────────────────────────────────────────────────────
+e   = score / math.max(BAR_DIR_TAU, 1e-12)
+aa  = math.abs(e)
+eb  = math.exp(e - aa)
+es  = math.exp(-aa)
+er  = math.exp(-e - aa)
+tot = eb + es + er
+bullMass = eb / tot
+sideMass = es / tot
+bearMass = er / tot
+
+confidence = math.max(math.max(bullMass, sideMass), bearMass)
+
+// argmax -> direction, then the CONF_L override forces SIDEWAYS when no
+// direction carries enough mass.
+int dirRaw = bullMass >= sideMass and bullMass >= bearMass ? 1 : bearMass >= sideMass and bearMass >= bullMass ? -1 : 0
+dirRaw := confidence < CONF_L ? 0 : dirRaw
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX 2 — causal confirmation delay, applied to the DIRECTION only (not to the
+// 5-label string: an H<->L intensity flicker inside one direction would
+// otherwise keep resetting the candidate and could freeze the label forever).
+// Ported line-for-line from confirm_delay().
+// ─────────────────────────────────────────────────────────────────────────────
+var int dirEmit = na
+var int cand    = na
+var int runLen  = 0
+
+if na(dirEmit)
+    dirEmit := dirRaw
+    cand    := dirRaw
+    runLen  := 0
+else
+    int prevEmit = dirEmit
+    if dirRaw == prevEmit
+        dirEmit := dirRaw
+        cand    := dirRaw
+        runLen  := 0
+    else
+        if dirRaw == cand
+            runLen := runLen + 1
+        else
+            cand   := dirRaw
+            runLen := 1
+        if runLen >= CONFIRM_BARS
+            dirEmit := cand
+            runLen  := 0
+        else
+            dirEmit := prevEmit
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTENSITY AXIS (H vs L). Contains ZERO HMM in the original either — it is two
+// rolling price statistics — so this half is a COMPLETE, faithful port.
+//   trend_z           : z-score of mom_3d against the frozen baseline
+//   trend_efficiency  : Kaufman ratio, |net move| / |path walked| over EFF_WIN
+// ─────────────────────────────────────────────────────────────────────────────
+trendZ = z_m3d
+
+netMove = math.abs(close - close[EFF_WIN])
+pathLen = math.sum(math.abs(close - close[1]), EFF_WIN)
+eff     = pathLen > 0 ? math.min(math.max(netMove / pathLen, 0.0), 1.0) : 0.0
+
+// Gate with hysteresis (FIX 3):
+//   enter (0 -> +/-1) : |z| >= Z_HI      AND eff >= EFF_HI
+//   hold  (stay)      : |z| >= Z_HI_EXIT AND eff >= EFF_HI_EXIT AND sign unchanged
+//   exit              : otherwise -> re-test ENTER, so a sign flip forces a
+//                       fresh entry rather than silently relabelling.
+// ESCALATION_DURING_HOLD = 'allow' (the shipped value) applies no block/force
+// masks, so none are implemented here.
+canEnter = math.abs(trendZ) >= Z_HI      and eff >= EFF_HI
+canHold  = math.abs(trendZ) >= Z_HI_EXIT and eff >= EFF_HI_EXIT
+int sgn  = trendZ > 0 ? 1 : trendZ < 0 ? -1 : 0
+
+var int intens = 0
+intens := (intens != 0 and canHold and sgn == intens) ? intens : (canEnter and sgn != 0 ? sgn : 0)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Final 5-label assembly. H requires the escalation to AGREE with the emitted
+// direction; a bearish escalation under a bull direction stays L_BULL.
+// ─────────────────────────────────────────────────────────────────────────────
+warm = bar_index > math.max(SWING_WIN, MOM_5D_LEN) + 30
+
+string regime = dirEmit == 1  ? (intens ==  1 ? "H_BULL" : "L_BULL") : dirEmit == -1 ? (intens == -1 ? "H_BEAR" : "L_BEAR") : "SIDEWAYS"
+regime := warm ? regime : na
+
+// Colours identical to REGIME_COLORS in the notebook.
+C_HBULL = #006400
+C_LBULL = #90EE90
+C_SIDE  = #808080
+C_LBEAR = #FFB6C1
+C_HBEAR = #8B0000
+
+color regimeCol = regime == "H_BULL" ? C_HBULL : regime == "L_BULL" ? C_LBULL : regime == "L_BEAR" ? C_LBEAR : regime == "H_BEAR" ? C_HBEAR : C_SIDE
+
+bgcolor(showBG and not na(regime) ? color.new(regimeCol, bgOpacity) : na, title="Regime background")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Readout
+// ─────────────────────────────────────────────────────────────────────────────
+if showTable and barstate.islast and not na(regime)
+    var table t = table.new(position.top_right, 2, 8, border_width=1)
+    table.cell(t, 0, 0, "RegDet", bgcolor=regimeCol, text_color=color.white)
+    table.cell(t, 1, 0, regime,   bgcolor=regimeCol, text_color=color.white)
+    table.cell(t, 0, 1, "confidence"), table.cell(t, 1, 1, str.tostring(confidence, "#.###"))
+    table.cell(t, 0, 2, "dir score z"), table.cell(t, 1, 2, str.tostring(score, "#.###"))
+    table.cell(t, 0, 3, "trend_z"),     table.cell(t, 1, 3, str.tostring(trendZ, "#.###"))
+    table.cell(t, 0, 4, "efficiency"),  table.cell(t, 1, 4, str.tostring(eff, "#.###"))
+    table.cell(t, 0, 5, "bars/day"),    table.cell(t, 1, 5, str.tostring(bpd))
+    table.cell(t, 0, 6, "windows m1/m3/m5/ctx"), table.cell(t, 1, 6, str.tostring(MOM_1D_LEN) + "/" + str.tostring(MOM_3D_LEN) + "/" + str.tostring(MOM_5D_LEN) + "/" + str.tostring(SWING_WIN))
+    table.cell(t, 0, 7, "w (HMM share)"), table.cell(t, 1, 7, "1.0 (no HMM)")
+
+changed = not na(regime) and regime != regime[1]
+if showMarks and changed
+    label.new(bar_index, high, regime, style=label.style_label_down, color=regimeCol, textcolor=color.white, size=size.tiny)
+
+// Plots for data-window inspection and for building alerts on.
+plot(score,      "direction score (z)", display=display.data_window)
+plot(trendZ,     "trend_z",             display=display.data_window)
+plot(eff,        "trend_efficiency",    display=display.data_window)
+plot(confidence, "confidence",          display=display.data_window)
+plot(dirEmit,    "direction (-1/0/+1)", display=display.data_window)
+plot(intens,     "intensity (-1/0/+1)", display=display.data_window)
+
+alertcondition(changed, "RegDet regime changed", "RegDet regime changed on {{ticker}} {{interval}}")
