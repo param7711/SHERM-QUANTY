@@ -17,3 +17,6 @@ outputs/charts/*.png
 database/rl_*.npz
 database/rl_*.pkl
 database/rl_*.json
+
+# Research datasets — regenerated via `python research/channel_regime/data.py`
+data/research/*.parquet
