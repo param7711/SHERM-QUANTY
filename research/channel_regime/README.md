@@ -311,3 +311,150 @@ returns nothing on GitHub code search, and TradingView is blocked here. What
 is implemented is what was specified in words: mean = SMA(close, 20), inner
 bands at 0.3 population stdev. If the real indicator has an outer band, a
 different stdev basis, or its own cap, those numbers change.
+
+---
+
+# v3 — with the actual indicator file
+
+`regdet_v6_bb_IL.pine` settled both open questions and revealed that v1 and
+v2 had been filtering on the wrong variable.
+
+## What the file says
+
+**The Bollinger block is display only.** Lines 209-210: *"This is PURELY
+VISUAL. It feeds nothing: not the direction features, not the intensity
+gate, not the regime label."* Its five lines are one basis and one
+standard deviation read at two distances:
+
+| Input | Default | On this chart |
+|---|---|---|
+| `bbLength` | 20 | 20 |
+| `bbMaType` | SMA | SMA |
+| `bbSrc` | close | close |
+| `bbMult` (outer) | **2.0** | 2.0 |
+| `bbInnerMult` (inner) | 1.0 | **0.3** |
+| `bbOffset` | 0 | 0 |
+
+`bbSd = ta.stdev(bbSrc, bbLength)` is biased=true, i.e. population — which
+is what `regdet.bollinger()` implements. **The outer band is the cap.** The
+v2 sweep found a plateau from 1.25 to 2.0 and recommended 1.5; the
+indicator's own outer default of 2.0 sits inside that plateau.
+
+**And the chart carries a real regime detector.** RegDet emits five labels
+(H_BULL / L_BULL / SIDEWAYS / L_BEAR / H_BEAR) from a direction axis
+(softmax over five signed momentum features, with a `CONF_L` confidence
+override and a `CONFIRM_BARS` delay) and an intensity axis (`trend_z`,
+Kaufman efficiency, and this file's volatility cap). `regdet.py` ports it
+line for line at w=1.0, where the HMM term drops out exactly. On S&P 500
+daily the occupancy is SIDEWAYS 49.0%, L_BULL 20.4%, L_BEAR 16.9%,
+H_BULL 8.1%, H_BEAR 5.7%.
+
+## Result 1 — the detector's own warning is correct
+
+The file says: *"NOT A SIGNAL... the 5-label forward-return ordering is
+BROKEN at every horizon. Do not treat H_BULL as 'go long'."* Tested
+directly (`15_regdet_specs.csv`), net Sharpe:
+
+| Spec | SP500 | NASDAQ | WTI | GOOG | EURUSD |
+|---|---|---|---|---|---|
+| R6 trend leg only, long H_BULL / short H_BEAR | −0.90 | −0.92 | −0.28 | −0.11 | −13.04 |
+| R3 fade + follow the trend in H_* | −0.33 | −0.73 | −0.37 | −0.65 | −12.53 |
+
+Negative on every instrument. Every spec containing a trend leg is negative
+on every instrument. This is now the third independent way the
+trend-following half of the hypothesis has failed: v1's SMA breakout could
+not fire, v2's price breakout lost money when it did, and the actual regime
+detector's high-intensity labels lose money in both directions.
+
+## Result 2 — as a *gate on fading*, it works
+
+Fade the DevLucem band only while RegDet says SIDEWAYS, with the 2.0-sigma
+outer band capping new entries (spec R5):
+
+| | SP500 | NASDAQ | WTI | GOOG | EURUSD |
+|---|---|---|---|---|---|
+| R0 fade, no gate | +0.375 | +0.125 | +0.024 | −0.489 | −3.337 |
+| **R5 fade in SIDEWAYS + 2.0s cap** | **+0.733** | **+0.506** | −0.040 | −0.391 | −2.595 |
+
+On the two equity indices this is a different animal from anything in v1:
+
+| | SP500 | NASDAQ |
+|---|---|---|
+| Net Sharpe | +0.733 | +0.506 |
+| CAGR | +4.43% | +4.02% |
+| Max drawdown | **−9.5%** | −21.1% |
+| Trades / exposure | 39 / 17.1% | 41 / 19.8% |
+| Hit rate | 82% | 73% |
+| **Beta** | **+0.048** | **+0.002** |
+| **Ann. alpha (Newey-West)** | **+4.26%, t = +3.30** | **+4.28%, t = +2.29** |
+| Long / short P&L | +0.64 / +0.28 | +0.79 / +0.09 |
+| Walk-forward OOS (80 configs) | +0.580 | +0.490 |
+| Deflated Sharpe | 0.924 | **0.973** |
+| Surface: % of 80 configs positive | 95% | 95% |
+
+Near-zero beta, both directions profitable, positive in all four S&P
+sub-periods (+1.04 / +0.33 / +0.93 / +0.59), still +0.45 at 50 bps per
+side, and a broad plateau rather than a spike. v1's walk-forward was ≈0 or
+negative on four of five; here it is +0.58 and +0.49.
+
+## Result 3 — but most of the S&P gain is not the detector
+
+The sharpest control: rotate the label series by a random offset. Occupancy
+and run-length structure survive intact; only the alignment to price dies.
+500 rotations:
+
+| | observed | rotated-label null | p | sign-flip null | p |
+|---|---|---|---|---|---|
+| SP500 | +0.733 | mean **+0.615**, sd 0.101 | **0.144** | mean +0.007, sd 0.205 | <0.002 |
+| NASDAQ | +0.506 | mean +0.174, sd 0.081 | **<0.001** | mean +0.004, sd 0.220 | 0.013 |
+
+Read carefully:
+
+* Against sign-flipped prices both indices clear easily — **the DevLucem
+  fade itself has real edge.** That is the finding v1 missed by testing the
+  wrong entry rule.
+* On the S&P, a *randomly rotated* regime series scores +0.615 against the
+  real one's +0.733. The detector's timing is not what earns the return
+  there; **any blocky entry filter of roughly this shape would do**, because
+  what the gate really does is stop the fade re-entering repeatedly inside
+  one persistent move. Attribute the S&P number to "fade plus a sparse
+  entry filter", not to RegDet.
+* On Nasdaq the real labels beat the rotated ones decisively (+0.506 vs
+  +0.174). There the detector's timing is doing genuine work.
+
+## Result 4 — the strategy uses one RegDet knob, not the whole detector
+
+Varying the detector's own settings under spec R5:
+
+| RegDet setting | SP500 | NASDAQ | SIDEWAYS share |
+|---|---|---|---|
+| shipped (vol cap on) | +0.733 | +0.506 | 48.5% |
+| **vol cap OFF** | **+0.733** | **+0.506** | 48.5% |
+| `Z_HI` 0.40 / 0.60 | +0.733 | +0.506 | 48.5% |
+| `EFF_HI` 0.25 / 0.45 | +0.733 | +0.506 | 48.5% |
+| `CONF_L` 0.45 | +0.615 | +0.546 | 32.1% |
+| `CONF_L` 0.55 | +0.682 | +0.712 | 63.1% |
+| rolling baseline | +0.582 | +0.265 | 45.6% |
+
+SIDEWAYS is decided on the **direction** axis alone, so gating on it uses
+`CONF_L`, the softmax and the confirmation delay — and *nothing* from the
+intensity axis. `trend_z`, Kaufman efficiency and this file's volatility cap
+(Deviation 2) have **exactly zero effect** on this strategy. If the fade
+gate is the use case, the vol cap is not earning its complexity here.
+`CONF_L` is the one live knob, and 0.45-0.55 is a plateau.
+
+## Standing caveats
+
+* **Still not NIFTY/BANKNIFTY.** Everything above is S&P 500, Nasdaq, WTI,
+  GOOG daily and EUR/USD hourly.
+* **Two instruments out of five.** WTI, GOOG and EUR/USD are flat or
+  negative under every spec tried.
+* **PBO is ~0.5** on the R5 surface. With 95% of configs positive and
+  clustered, ranking among them is noise — which argues for taking the
+  middle of the plateau rather than the in-sample winner, not for
+  abandoning the surface. Walk-forward, which does select naively, still
+  earns +0.58 / +0.49.
+* This is now the third pass over the same five price series. The
+  cross-instrument split (indices work, commodity/stock/FX do not) is the
+  thing most likely to be a sample artefact, and the thing NIFTY data would
+  settle fastest.
