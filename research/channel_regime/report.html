@@ -1,0 +1,688 @@
+<title>Does the Channel Switch Have an Edge?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --plane:#f5f7f9;
+  --surface:#fdfdfe;
+  --surface-2:#eef1f4;
+  --ink:#0e1417;
+  --ink-2:#4d565c;
+  --ink-3:#7d868c;
+  --rule:#e0e4e8;
+  --rule-2:#c9d0d6;
+  --s1:#2a78d6;
+  --s2:#eb6834;
+  --s1-wash:rgba(42,120,214,.10);
+  --grid:#e6eaee;
+  --crit:#d03b3b;
+  --good:#0ca30c;
+  --warn:#fab219;
+  --shadow:0 1px 2px rgba(14,20,23,.05), 0 8px 24px -12px rgba(14,20,23,.14);
+  --sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --serif:"IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --plane:#0c0e10;
+    --surface:#171b1f;
+    --surface-2:#1e2429;
+    --ink:#f1f4f6;
+    --ink-2:#b2bbc2;
+    --ink-3:#848d94;
+    --rule:#262c31;
+    --rule-2:#343c42;
+    --s1:#3987e5;
+    --s2:#d95926;
+    --s1-wash:rgba(57,135,229,.16);
+    --grid:#242a2f;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --plane:#0c0e10;
+  --surface:#171b1f;
+  --surface-2:#1e2429;
+  --ink:#f1f4f6;
+  --ink-2:#b2bbc2;
+  --ink-3:#848d94;
+  --rule:#262c31;
+  --rule-2:#343c42;
+  --s1:#3987e5;
+  --s2:#d95926;
+  --s1-wash:rgba(57,135,229,.16);
+  --grid:#242a2f;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--plane);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 28px 96px}
+@media (max-width:640px){.wrap{padding:0 18px 64px}}
+
+/* ---------- masthead ---------- */
+.masthead{padding:56px 0 34px;border-bottom:2px solid var(--ink);margin-bottom:0}
+.kicker{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;gap:14px;flex-wrap:wrap;align-items:center
+}
+.kicker span.sep{color:var(--rule-2)}
+h1{
+  font-family:var(--serif);font-weight:600;font-size:clamp(2.1rem,5.2vw,3.4rem);
+  line-height:1.08;letter-spacing:-.015em;margin:20px 0 14px;text-wrap:balance;max-width:20ch
+}
+.standfirst{
+  font-family:var(--serif);font-size:clamp(1.05rem,2.1vw,1.28rem);line-height:1.55;
+  color:var(--ink-2);max-width:62ch;margin:0
+}
+
+/* ---------- verdict ---------- */
+.verdict{
+  margin:34px 0 0;background:var(--surface);border:1px solid var(--rule);
+  border-radius:3px;box-shadow:var(--shadow);overflow:hidden
+}
+.verdict-head{padding:26px 28px 22px;border-bottom:1px solid var(--rule);display:flex;gap:18px;align-items:flex-start}
+.stamp{
+  flex:none;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:#fff;background:var(--crit);padding:5px 10px;border-radius:2px;margin-top:4px
+}
+.verdict-head p{margin:0;font-family:var(--serif);font-size:1.24rem;line-height:1.45;color:var(--ink)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr)}
+@media (max-width:760px){.tiles{grid-template-columns:1fr}}
+.tile{padding:22px 28px 24px;border-right:1px solid var(--rule)}
+.tile:last-child{border-right:none}
+@media (max-width:760px){.tile{border-right:none;border-bottom:1px solid var(--rule)}.tile:last-child{border-bottom:none}}
+.tile .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:8px}
+.tile .fig{font-family:var(--sans);font-size:2.35rem;font-weight:600;line-height:1;letter-spacing:-.02em;color:var(--ink);display:block}
+.tile .fig em{font-style:normal;font-size:1.1rem;font-weight:500;color:var(--ink-2);margin-left:4px}
+.tile .sub{font-size:13.5px;color:var(--ink-2);margin:9px 0 0;line-height:1.45}
+
+/* ---------- sections ---------- */
+section{padding-top:52px}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--s1);margin:0 0 10px;display:flex;align-items:center;gap:10px
+}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--rule)}
+h2{
+  font-family:var(--serif);font-weight:600;font-size:clamp(1.5rem,3vw,2rem);line-height:1.18;
+  letter-spacing:-.012em;margin:0 0 12px;text-wrap:balance;max-width:26ch
+}
+h3{font-family:var(--sans);font-weight:600;font-size:1rem;letter-spacing:-.005em;margin:32px 0 10px}
+p{max-width:68ch;margin:0 0 16px;color:var(--ink-2)}
+p strong{color:var(--ink);font-weight:600}
+p.lede{color:var(--ink);font-size:1.05rem}
+ul{max-width:68ch;padding-left:20px;color:var(--ink-2)}
+li{margin-bottom:9px}
+li strong{color:var(--ink);font-weight:600}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:1px 5px;border-radius:2px;color:var(--ink)}
+a{color:var(--s1)}
+
+/* ---------- figures ---------- */
+figure{margin:26px 0 8px;background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:22px 22px 16px;box-shadow:var(--shadow)}
+figcaption{font-size:13px;color:var(--ink-3);margin-top:14px;padding-top:12px;border-top:1px solid var(--rule);max-width:74ch;line-height:1.5}
+.figtitle{font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 3px}
+.figsub{font-size:12.5px;color:var(--ink-3);margin:0 0 16px}
+.chart{width:100%;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto;font-family:var(--sans)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--ink-2)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:7px;vertical-align:-1px}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;margin:22px 0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+th,td{padding:9px 14px;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;background:var(--surface-2);position:sticky;top:0
+}
+tbody tr:last-child td{border-bottom:none}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";color:var(--ink)}
+td.neg{color:var(--crit)}
+td.name{font-weight:500;color:var(--ink)}
+tbody tr.total td{background:var(--surface-2);font-weight:600}
+.pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:2px;display:inline-block}
+.pill.fail{background:rgba(208,59,59,.13);color:var(--crit)}
+.pill.pass{background:rgba(12,163,12,.13);color:var(--good)}
+.pill.weak{background:rgba(250,178,25,.16);color:#8a6100}
+:root[data-theme="dark"] .pill.weak,:root:not([data-theme="light"]) .pill.weak{color:var(--warn)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .pill.weak{color:var(--warn)}}
+
+/* ---------- callout ---------- */
+.note{
+  border-left:3px solid var(--s1);background:var(--s1-wash);padding:16px 20px;margin:26px 0;border-radius:0 3px 3px 0
+}
+.note p{margin:0;max-width:66ch;color:var(--ink)}
+.note .t{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--s1);display:block;margin-bottom:6px}
+
+/* ---------- footer ---------- */
+footer{margin-top:64px;padding-top:26px;border-top:2px solid var(--ink);font-size:13px;color:var(--ink-3)}
+footer p{color:var(--ink-3);font-size:13px}
+pre{
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--surface);border:1px solid var(--rule);
+  border-radius:3px;padding:16px 18px;overflow-x:auto;color:var(--ink-2)
+}
+
+/* ---------- tooltip ---------- */
+#tip{
+  position:fixed;pointer-events:none;opacity:0;transition:opacity .1s;z-index:50;
+  background:var(--surface);border:1px solid var(--rule-2);border-radius:3px;box-shadow:var(--shadow);
+  padding:8px 11px;font-size:12.5px;color:var(--ink);max-width:240px
+}
+#tip .tt{font-weight:600;margin-bottom:4px}
+#tip .tr{display:flex;justify-content:space-between;gap:16px;color:var(--ink-2)}
+#tip .tr b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+</style>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="kicker">
+    <span>SHERM-QUANTY</span><span class="sep">/</span><span>hypothesis test</span>
+    <span class="sep">/</span><span>5 instruments &middot; 25,531 bars</span>
+    <span class="sep">/</span><span>net of 5 bps per side</span>
+  </div>
+  <h1>Does the channel switch have an edge?</h1>
+  <p class="standfirst">The idea: let a regression channel say whether the market is trending or ranging &mdash; fade the bands inside it, follow the 20-SMA when it breaks out. Nine tests later, here is what the data says.</p>
+
+  <div class="verdict">
+    <div class="verdict-head">
+      <span class="stamp">Not an edge</span>
+      <p>No alpha found &mdash; and the rule has not been overfitted yet, because there is nothing here to overfit. The trend half never fires, the half that does is long beta, and it does not clear its own null.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile">
+        <span class="lab">Trend leg trigger rate</span>
+        <span class="fig">0.07&ndash;0.73<em>% of bars</em></span>
+        <p class="sub">The 20-SMA breakout fires 2&ndash;3 times in twenty years, and cannot fire at all once <code>k &ge; 2.5</code>.</p>
+      </div>
+      <div class="tile">
+        <span class="lab">Best alpha t-stat</span>
+        <span class="fig">1.26</span>
+        <p class="sub">Newey-West, S&amp;P 500, after stripping out market beta of 0.26. Nothing reaches 1.96.</p>
+      </div>
+      <div class="tile">
+        <span class="lab">Best deflated Sharpe</span>
+        <span class="fig">0.74</span>
+        <p class="sub">Probability the best of 648 tuned configs beats the best of 648 coin flips. Needs 0.95.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="method">
+  <p class="eyebrow">What was tested</p>
+  <h2>The rule, stated precisely enough to be wrong</h2>
+  <p class="lede">A rolling OLS fit of close on bar index over the last <code>n</code> bars gives a centre line and a residual sigma. <code>z</code> is where price sits in that channel; <code>smaz</code> is where the 20-SMA sits.</p>
+  <ul>
+    <li><strong>Range regime</strong> &mdash; the SMA is inside the &plusmn;<code>k</code>&sigma; band. Go long when <code>z &le; &minus;0.9k</code>, short when <code>z &ge; 0.9k</code>, exit at the centre line.</li>
+    <li><strong>Trend regime</strong> &mdash; the SMA breaks the band. Long above the upper band, short below the lower, flat again when it re-enters.</li>
+    <li>Defaults <code>n=100, k=2.0, sma=20</code>. Signal formed on bar <em>t</em>'s close, filled at <em>t+1</em>, close-to-close P&amp;L, &plusmn;1 unit, 5 bps per side. The code asserts the realised position is exactly the signal lagged one bar, and that truncating the future never changes a past value.</li>
+  </ul>
+  <div class="note">
+    <span class="t">Read this before the numbers</span>
+    <p>This ran on the S&amp;P 500, Nasdaq, WTI and GOOG daily plus EUR/USD hourly &mdash; <strong>not on NIFTY or BANKNIFTY</strong>. Every market-data host is blocked from this sandbox, and the repo's own downloader silently falls back to synthetic GBM, on which any timing rule is guaranteed to lose. So the history here comes from real observed prices bundled inside PyPI packages. The conclusions are about whether this class of rule works on real price series; the Indian read has to be re-run before it decides anything about capital.</p>
+  </div>
+</section>
+
+<section id="scoreboard">
+  <p class="eyebrow">Scoreboard</p>
+  <h2>One win in five, on the friendliest instrument</h2>
+  <p>Net-of-cost Sharpe, full sample, default parameters. The strategy is flat roughly half the time, so a lower Sharpe than buy &amp; hold at half the exposure would still be interesting &mdash; but four of five are worse on both counts, and the fifth is inside the noise band established further down.</p>
+  <figure>
+    <p class="figtitle">Strategy vs buy &amp; hold, net Sharpe</p>
+    <p class="figsub">Full sample per instrument, 5 bps per side</p>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>Channel switch</span>
+      <span><i style="background:var(--s2)"></i>Buy &amp; hold</span>
+    </div>
+    <div class="chart" id="c-scoreboard"></div>
+    <figcaption>EUR/USD is hourly data over ten months and is the outlier in both directions: the underlying trended hard, so buy &amp; hold prints 2.32 and the fader prints &minus;3.43.</figcaption>
+  </figure>
+</section>
+
+<section id="structure">
+  <p class="eyebrow">Test 1 &middot; Structure</p>
+  <h2>The switch never switches</h2>
+  <p class="lede">A 20-bar average of price cannot deviate from a 100-bar regression line as far as price itself does &mdash; smoothing shrinks the deviation by roughly half. That is arithmetic, not a market fact, and it means <strong>the breakout condition is close to unreachable</strong>.</p>
+  <figure>
+    <p class="figtitle">Share of bars beyond the 2&sigma; band</p>
+    <p class="figsub">Price crosses it constantly; the 20-SMA almost never does</p>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>Price (<code>|z| &gt; 2</code>)</span>
+      <span><i style="background:var(--s2)"></i>20-SMA (<code>|smaz| &gt; 2</code>) &mdash; the actual trigger</span>
+    </div>
+    <div class="chart" id="c-triggers"></div>
+    <figcaption>The largest <code>|smaz|</code> ever recorded across all five instruments is 2.43. At the common setting of <code>k = 2.5</code> or wider, the trend leg is mathematically dead.</figcaption>
+  </figure>
+  <p>Which makes the "regime-switching strategy" a mean-reversion strategy with a rounding error attached. Turning the trend leg off changes almost nothing:</p>
+  <div class="tablewrap">
+    <table>
+      <caption class="sr-only">Full hypothesis versus the mean-reversion leg alone</caption>
+      <thead><tr><th>Instrument</th><th>Full switch</th><th>MR leg alone</th><th>Trend-leg bars</th><th>Trend trades</th></tr></thead>
+      <tbody id="t-structure"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="attribution">
+  <p class="eyebrow">Test 2 &middot; Attribution</p>
+  <h2>What is left is long beta</h2>
+  <p class="lede">Split the return stream by direction and the picture is stark: the long side makes everything, the short side makes nothing. This is dip-buying in instruments that went up.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Instrument</th><th>Sharpe</th><th>Beta</th><th>Ann. alpha</th><th>Alpha t (NW)</th><th>Long P&amp;L</th><th>Short P&amp;L</th></tr></thead>
+      <tbody id="t-beta"></tbody>
+    </table>
+  </div>
+  <p>Newey-West t-statistics on the intercept, five lags. The threshold for "not noise" is about 1.96; the best reading is 1.26, on the instrument where a 0.26 beta to a rising index does most of the work.</p>
+  <figure>
+    <p class="figtitle">S&amp;P 500 &mdash; growth of 1.00, net of costs</p>
+    <p class="figsub">The best case in the study, against simply holding the index</p>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>Channel switch</span>
+      <span><i style="background:var(--s2)"></i>Buy &amp; hold</span>
+    </div>
+    <div class="chart" id="c-equity"></div>
+    <figcaption>The strategy's edge over buy &amp; hold is earned almost entirely in 2000&ndash;2002 and 2008, when being flat half the time was worth a great deal. Strip those and it tracks a levered-down index.</figcaption>
+  </figure>
+</section>
+
+<section id="significance">
+  <p class="eyebrow">Test 3 &middot; Significance</p>
+  <h2>It does not clear its own null</h2>
+  <p class="lede">Flip the sign of each daily return at random and re-run the whole strategy, 500 times. That keeps the volatility clustering the channel reacts to and destroys only the direction &mdash; so whatever Sharpe survives is what the machinery produces on structureless data.</p>
+  <figure>
+    <p class="figtitle">S&amp;P 500 &mdash; 500 sign-flip null runs vs the observed result</p>
+    <p class="figsub">If the strategy had an edge, the blue line would sit to the right of the distribution</p>
+    <div class="chart" id="c-null"></div>
+    <figcaption>Observed 0.347 against a null 95th percentile of 0.360: the real result lands <em>inside</em> the noise, at p = 0.066. The other four instruments give p = 0.15, 0.30, 0.93 and 0.89.</figcaption>
+  </figure>
+</section>
+
+<section id="robustness">
+  <p class="eyebrow">Test 4 &middot; Robustness</p>
+  <h2>Tuning it would not rescue it</h2>
+  <p class="lede">648 parameter combinations per instrument &mdash; lookback, band width, MA length, entry threshold, exit level. The question is not whether some combination looks good. Something always does. The question is whether the best one beats the best of 648 coin flips.</p>
+  <figure>
+    <p class="figtitle">Every configuration, worst to best</p>
+    <p class="figsub">Range across 648 configs per instrument, net Sharpe</p>
+    <div class="legend">
+      <span><svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:-2px"><circle cx="6.5" cy="6.5" r="4.5" fill="var(--ink-3)"/></svg> median config</span>
+      <span><svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:-2px"><circle cx="6.5" cy="6.5" r="5" fill="var(--s1)"/></svg> best of 648</span>
+      <span><svg width="15" height="13" viewBox="0 0 15 13" style="vertical-align:-2px"><path d="M7.5 1L13 6.5L7.5 12L2 6.5Z" fill="none" stroke="var(--s2)" stroke-width="2"/></svg> expected best if there is no skill at all</span>
+    </div>
+    <div class="chart" id="c-grid"></div>
+    <figcaption>On the S&amp;P 500 the best config (0.73) clears its no-skill benchmark (0.58); on Nasdaq and GOOG the best config does not even reach it. No deflated-Sharpe probability reaches the conventional 0.95 bar. EUR/USD is left off this axis &mdash; ten months of hourly data puts its grid on a different scale entirely (worst &minus;7.99, best 0.87, no-skill benchmark 4.98) &mdash; and appears in the table below.</figcaption>
+  </figure>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Instrument</th><th>Best of 648</th><th>Median</th><th>Deflated Sharpe</th><th>PBO</th><th>Walk-forward OOS</th><th>Verdict</th></tr></thead>
+      <tbody id="t-robust"></tbody>
+    </table>
+  </div>
+  <p><strong>PBO</strong> is the probability that the in-sample winner lands below median out of sample, measured across 924 combinatorial splits. <strong>Walk-forward</strong> picks the best config on everything seen so far and trades the next fold, five times over.</p>
+  <figure>
+    <p class="figtitle">In-sample selection vs what it actually earned</p>
+    <p class="figsub">Mean best-in-sample Sharpe across folds, and the Sharpe of the stitched out-of-sample stream</p>
+    <div class="chart" id="c-wf"></div>
+    <figcaption>Every instrument loses most or all of its in-sample Sharpe on contact with new data. Selection also thrashes: the chosen lookback jumps 150 &rarr; 100 &rarr; 150 and the MA jumps 10 &rarr; 50 &rarr; 50 between consecutive S&amp;P folds.</figcaption>
+  </figure>
+  <div class="note">
+    <span class="t">A trap worth naming</span>
+    <p>EUR/USD shows PBO of 0.05, which looks excellent until you notice why: every configuration is consistently terrible, so the in-sample winner reliably stays a winner among losers. A low PBO on a negative-Sharpe grid is not a green light &mdash; always read it next to the level.</p>
+  </div>
+</section>
+
+<section id="repairs">
+  <p class="eyebrow">Test 5 &middot; Repairs</p>
+  <h2>Ten nearby versions, none of them better</h2>
+  <p class="lede">If the trend leg is dead, make it fire. If the channel should gate the mean-reversion, gate it. Each row is the same test rerun with one thing changed; the columns are net Sharpe per instrument.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Variant</th><th>SP500</th><th>NASDAQ</th><th>WTI</th><th>GOOG</th><th>EURUSD</th><th>Mean</th></tr></thead>
+      <tbody id="t-variants"></tbody>
+    </table>
+  </div>
+  <p>The pattern is the giveaway: <strong>every change that lets the trend leg actually trade makes things worse</strong>. Switching the trigger from the SMA to price (variant D) takes the mean Sharpe from &minus;0.66 to &minus;1.96. The as-specified version looks best precisely because its trend leg is inert.</p>
+</section>
+
+<section id="next">
+  <p class="eyebrow">Where to go next</p>
+  <h2>Two structural lessons worth keeping</h2>
+  <h3>1. The regime variable is wrong, not just badly tuned</h3>
+  <p>An SMA-versus-band breakout compares a smoothed quantity to a band built from unsmoothed residuals. It is the wrong dimensionless number. The channel already carries its own read on how directional the market is: <code>slope &times; n / sigma</code> &mdash; the drift across the window measured in units of noise, which is the fit's R&sup2; in another costume. That is a real regime variable with a real distribution. <code>slope_max</code> and <code>slope_min_trend</code> in <code>Params</code> implement it; variants F&ndash;H are a first cut and are still negative, but they at least test the intended idea rather than an unreachable one.</p>
+  <h3>2. Fading a band is directionally biased by construction</h3>
+  <p>In any series with drift, the long side inherits the drift and the short side fights it. That guarantees a long-biased P&amp;L that looks like skill in a bull market. Score the next version on beta-adjusted alpha with a Newey-West t-stat, not on raw Sharpe, or it will keep rediscovering the equity risk premium and charging you costs for the privilege.</p>
+  <h3>3. Set the bar before the search, not after</h3>
+  <p>The machinery in this repo &mdash; PBO, deflated Sharpe, sign-flip nulls, anchored walk-forward &mdash; is cheap to run and is what separates an edge from a fitted curve. Worth wiring into <code>seeded_edges/revalidate_edges.py</code> as a gate every candidate has to pass before it reaches the shadow ledger: deflated Sharpe &ge; 0.95, PBO &le; 0.3, walk-forward OOS Sharpe within a stated fraction of in-sample, and an alpha t-stat that clears 2 after beta.</p>
+  <p>And re-run all of it on NIFTY, BANKNIFTY and the MCX contracts before any of it counts.</p>
+</section>
+
+<footer>
+  <p>Code, results and methodology on branch <code>claude/trading-strategy-hypothesis-backtest-52vtyd</code>, under <code>research/channel_regime/</code>. Twelve CSVs of raw output in <code>results/channel_regime/</code>.</p>
+  <pre>python research/channel_regime/channel.py      # self-check: fit, sigma, causality
+python research/channel_regime/backtest.py     # self-check: no look-ahead, costs
+python research/channel_regime/experiments.py --stage all --reps 500</pre>
+  <p>Nine test stages, roughly twelve minutes end to end. Every Sharpe on this page is net of 5 bps per side.</p>
+</footer>
+
+</div>
+
+<script>
+const DATA = {"scoreboard":[{"inst":"SP500","strategy":0.3470517093975857,"bh":0.282711124615482},{"inst":"NASDAQ","strategy":0.1036134125833043,"bh":0.3441810489478021},{"inst":"WTI","strategy":0.1606111489907876,"bh":0.2455679953918806},{"inst":"GOOG","strategy":-0.4912310108767492,"bh":0.8813128135295649},{"inst":"EURUSD","strategy":-3.4313149688017064,"bh":2.315935107990314}],"triggers":[{"inst":"SP500","price":0.11780210867802109,"sma":0.0072992700729927005},{"inst":"NASDAQ","price":0.128345498783455,"sma":0.00283860502838605},{"inst":"WTI","price":0.1405983945512041,"sma":0.0007297494526879105},{"inst":"GOOG","price":0.16398243045387995,"sma":0.003904343582235237},{"inst":"EURUSD","price":0.14446031422158742,"sma":0.002448479902060804}],"structure":[{"inst":"SP500","full":0.3470517093975857,"mr":0.3617873561611721,"tfBars":0.0071556350626118,"tfTrades":2},{"inst":"NASDAQ","full":0.1036134125833043,"mr":0.1101861689020244,"tfBars":0.0027827469687934,"tfTrades":3},{"inst":"WTI","full":0.1606111489907876,"mr":0.1468421344170156,"tfBars":0.0007210671794255,"tfTrades":2},{"inst":"GOOG","full":-0.4912310108767492,"mr":-0.5191112330141084,"tfBars":0.0037243947858473,"tfTrades":2},{"inst":"EURUSD","full":-3.4313149688017064,"mr":-3.590257360987117,"tfBars":0.0024,"tfTrades":2}],"beta":[{"inst":"SP500","sharpe":0.3470517093975857,"beta":0.2589189454181791,"alpha":0.0347665646988361,"t":1.263794014575973,"longPnl":1.0349236007124776,"shortPnl":-0.0162660322818885},{"inst":"NASDAQ","sharpe":0.1036134125833043,"beta":0.2033598070790481,"alpha":0.002068640227385,"t":0.0521790623700189,"longPnl":0.8164473810603661,"shortPnl":-0.3715403441256975},{"inst":"WTI","sharpe":0.1606111489907876,"beta":0.0410930171425341,"alpha":0.0427972577212881,"t":0.89062885698723,"longPnl":1.0805214728849195,"shortPnl":0.5479957794415573},{"inst":"GOOG","sharpe":-0.4912310108767492,"beta":0.0555543052400716,"alpha":-0.1337994140206501,"t":-1.6338146524236807,"longPnl":0.0504836153005999,"shortPnl":-1.0319113669575248},{"inst":"EURUSD","sharpe":-3.4313149688017064,"beta":-0.0464890072364201,"alpha":-0.1709182420871155,"t":-3.18760663096989,"longPnl":-0.012902641341863,"shortPnl":-0.0948468074617043}],"nullSp500":{"samples":[-0.1999,0.3333,-0.0464,-0.2724,-0.0598,-0.1864,-0.1548,-0.4549,-0.5185,0.4871,0.1803,-0.0996,-0.2303,0.0992,-0.1128,-0.3619,0.0222,0.3413,0.0899,-0.103,-0.1858,-0.1926,-0.1673,0.1553,-0.0986,-0.3246,-0.0852,0.0401,0.2876,-0.109,0.2131,0.0737,-0.098,0.4735,-0.2168,-0.5221,0.0143,-0.5165,-0.0218,-0.3024,-0.14,0.0514,0.1931,-0.3978,-0.0958,-0.1445,-0.1272,0.023,0.2089,0.2053,-0.3036,0.4307,-0.2478,-0.2705,0.2573,0.1243,-0.1538,-0.0374,0.1098,0.2871,-0.1474,-0.0629,-0.2191,0.0753,-0.3413,-0.0847,0.0769,-0.1855,0.0193,-0.1048,-0.1195,-0.1771,0.0279,0.1094,0.3918,-0.2836,-0.2816,0.0254,-0.3794,-0.5338,0.1584,-0.1482,-0.0476,0.0151,-0.2528,0.0884,0.0938,-0.2658,-0.4768,-0.0517,0.314,0.0389,-0.1519,-0.0479,-0.0858,0.0432,-0.511,-0.3376,-0.0921,-0.0493,-0.0172,-0.1277,-0.1218,-0.4996,-0.1109,0.1921,-0.3001,0.1204,0.166,-0.0426,-0.0783,-0.105,0.0535,0.0439,-0.4163,-0.0363,0.139,-0.3215,-0.2325,-0.1397,-0.1058,-0.111,0.4372,0.0248,-0.1833,0.2999,0.1562,-0.0972,-0.0659,0.191,0.3732,0.1664,-0.4079,-0.3769,-0.1055,0.2752,0.1412,-0.3874,-0.5072,-0.0257,0.2383,-0.4566,0.1133,0.2505,-0.0304,0.013,-0.0312,-0.021,0.1074,0.0174,0.1626,-0.31,0.1393,-0.7192,0.2263,-0.4374,-0.4236,0.083,0.0833,-0.0084,-0.2502,-0.12,-0.1005,-0.0551,-0.1746,0.0627,0.2194,-0.4633,-0.0465,-0.3913,-0.0861,0.4627,0.401,0.419,0.2734,-0.0358,-0.0322,-0.0816,-0.2373,-0.2774,0.2146,-0.112,0.0158,0.1094,0.0306,-0.0481,0.118,-0.2446,0.0962,-0.3337,0.0105,-0.1691,0.145,0.3484,0.018,-0.4316,0.3279,-0.1567,-0.0816,-0.1128,-0.3029,0.0099,-0.0664,-0.1595,-0.167,-0.5279,0.1654,0.399,0.0367,-0.0249,0.1885,-0.2571,-0.2615,-0.2589,-0.0775,-0.3581,0.2443,0.0391,0.2121,-0.212,-0.0904,0.3791,-0.1011,0.0519,-0.0525,-0.1238,-0.0543,0.1854,-0.1602,0.4099,-0.3684,-0.0431,-0.1878,0.1757,0.3013,0.0201,0.2626,-0.2172,-0.0146,-0.1984,-0.1261,-0.0571,0.0891,-0.5745,-0.08,0.2506,0.4094,-0.1802,0.098,-0.3613,0.1464,0.0076,0.5449,0.056,-0.0009,0.3594,0.1517,-0.3063,-0.1961,-0.2877,-0.0439,-0.1537,0.3477,0.0098,-0.1377,0.141,-0.3157,-0.2054,0.1773,0.047,-0.2242,-0.0587,-0.1476,-0.031,-0.1111,0.2807,0.5314,0.243,0.6146,0.1609,-0.2168,0.0161,-0.2043,-0.2014,-0.1216,-0.3853,-0.0462,-0.5996,-0.1942,-0.0697,-0.3518,-0.1209,0.009,-0.3973,-0.2504,-0.1143,-0.2837,-0.3247,-0.0772,-0.4464,0.1051,-0.3158,0.0756,0.0875,-0.3448,-0.063,0.353,0.0661,0.481,-0.1809,0.144,-0.1257,-0.0487,-0.1902,0.1397,-0.635,0.3496,-0.0523,-0.1407,0.0659,0.2674,0.3486,-0.0256,0.2024,-0.1402,0.0459,-0.0219,0.2488,0.0001,0.2876,-0.2237,-0.1864,0.0125,0.3475,0.2487,-0.0648,-0.1931,-0.1201,0.2834,-0.0825,-0.1387,0.0795,-0.1412,-0.106,-0.0639,-0.3206,0.3899,-0.143,0.0344,-0.0823,0.0449,-0.298,0.2526,0.2603,-0.2443,0.0219,0.0318,-0.0305,-0.2087,-0.5146,-0.0114,-0.1611,-0.0742,-0.1427,-0.2163,-0.1118,-0.0494,-0.2249,0.2484,0.1429,-0.1008,-0.1535,-0.2663,0.0692,-0.4421,0.12,-0.1287,0.0321,-0.2878,-0.326,-0.0333,-0.3132,0.1158,0.4456,0.0306,0.2601,0.1133,0.2264,-0.1008,-0.0963,-0.1898,-0.0988,-0.2049,0.0668,-0.0421,0.3807,0.3566,0.487,-0.2632,-0.1083,-0.297,-0.0512,-0.1819,0.5768,0.0544,-0.2908,-0.2029,-0.1847,0.0656,-0.1004,0.3813,0.0201,0.2094,0.0749,0.1203,0.0672,0.2013,0.2603,0.0189,-0.2445,-0.1881,-0.1177,-0.205,-0.2389,-0.4148,-0.277,0.214,0.2647,-0.2241,0.2422,-0.1041,-0.0869,-0.0497,-0.1059,-0.094,-0.342,-0.1276,0.1376,0.0903,0.1594,-0.257,-0.3268,-0.2707,-0.0359,-0.0578,-0.3459,0.074,-0.2122,0.3755,0.1195,0.2083,-0.1037,-0.5667,0.18,-0.0158,0.0383,-0.1929,0.012,0.0492,0.4111,0.1025,-0.1217,-0.0403,0.0263,-0.2194,-0.1974,-0.3034,0.1016,-0.2078,-0.1077,-0.0966,-0.2114,-0.1457,-0.4496,-0.1153,0.2391,0.2034,-0.0183,-0.0086,-0.5323,0.2384,-0.2143,-0.0513,0.0198,0.0096,-0.2722,-0.2349,0.0196,-0.0139,-0.2285,0.0418,-0.0795,-0.0436,-0.0931,-0.0961,-0.0587,-0.1299,0.009,0.2707,0.1121],"observed":0.3470517093975857,"p95":0.36005679033351845},"grid":[{"inst":"SP500","min":-0.519823769860491,"median":0.23088831783224945,"max":0.7257702554036509,"nullMax":0.5839723500035202,"dsr":0.7404420717357791,"pbo":0.3041125541125541,"oos":0.2350279331268628,"isMean":0.9547425473122662,"cls":"weak","verdict":"not proven"},{"inst":"NASDAQ","min":-0.4036964733701497,"median":0.0710548456445694,"max":0.3489306526558176,"nullMax":0.4688618363892591,"dsr":0.2963099400009502,"pbo":0.7878787878787878,"oos":-0.051037175348597,"isMean":0.4645836869431209,"cls":"fail","verdict":"fails"},{"inst":"WTI","min":-0.2525883106874027,"median":0.08600164576612435,"max":0.4355492208683527,"nullMax":0.4129220393700603,"dsr":0.552985481552453,"pbo":0.553030303030303,"oos":-0.1211958529237591,"isMean":0.6759492998594883,"cls":"fail","verdict":"fails"},{"inst":"GOOG","min":-0.9399844693603338,"median":-0.3563012852858902,"max":0.4416208025054225,"nullMax":0.6945851360109446,"dsr":0.2248200414036512,"pbo":0.4837662337662338,"oos":-0.1926146507667677,"isMean":0.6420292595212886,"cls":"fail","verdict":"fails"},{"inst":"EURUSD","min":-7.9940516185452415,"median":-2.9849064478340575,"max":0.8707024688685153,"nullMax":4.978184745904423,"dsr":8.717030772062298e-05,"pbo":0.0454545454545454,"oos":-1.0105202253630352,"isMean":1.2561113705458156,"cls":"fail","verdict":"fails"}],"variants":[{"label":"A  as specified (SMA breaks 2s band)","v":[0.3470517093975857,0.1036134125833043,0.1606111489907876,-0.4912310108767492,-3.4313149688017064],"mean":-0.6622539417413555},{"label":"B  mean-reversion leg only","v":[0.3617873561611721,0.1101861689020244,0.1468421344170156,-0.5191112330141084,-3.590257360987117],"mean":-0.6981105869042026},{"label":"C  trend leg only (SMA trigger)","v":[-0.1372421545020719,-0.1786637300988444,0.2614304034454636,0.3387707262737046,1.021362549581007],"mean":0.2611315589398518},{"label":"D  trend trigger = price, same band","v":[-0.7002118154120076,-0.1414674785517525,-0.1390340201125638,-0.2530453357213769,-8.561131323674285],"mean":-1.958977994694397},{"label":"E  trend trigger = SMA, band 1.0s","v":[-0.266978534498088,-0.2177173944420628,0.1055661796109453,-0.1524538158209951,-2.289724778049941],"mean":-0.5642616686400285},{"label":"F  MR only when channel is flat","v":[0.279932027749575,0.124660097796061,-0.0092041265391314,-0.5475488476420711,-2.147730318104056],"mean":-0.4599782333479245},{"label":"G  flat-gated MR + steep-gated trend","v":[0.2794737688253903,0.114758676928229,-0.1909524042060617,-0.6473979418148748,-2.560895034589105],"mean":-0.6010025869712844},{"label":"H  trend only, price + steep channel","v":[0.0921621223454797,-0.0042383395913827,-0.4592907272550767,-0.3536892770141038,-2.5693228042025997],"mean":-0.6588758051435366},{"label":"I  MR with a 2-sigma stop","v":[0.3617873561611721,0.1101861689020244,0.1468421344170156,-0.5191112330141084,-3.590257360987117],"mean":-0.6981105869042026},{"label":"J  MR with a 20-bar time stop","v":[0.2612010729609596,0.0761138657615045,0.0720165053390811,-0.3833135544027729,-3.602401564313537],"mean":-0.715276734930953}],"equity":{"dates":["1999-01-04","1999-01-21","1999-02-08","1999-02-25","1999-03-15","1999-03-31","1999-04-19","1999-05-05","1999-05-21","1999-06-09","1999-06-25","1999-07-14","1999-07-30","1999-08-17","1999-09-02","1999-09-21","1999-10-07","1999-10-25","1999-11-10","1999-11-29","1999-12-15","2000-01-03","2000-01-20","2000-02-07","2000-02-24","2000-03-13","2000-03-29","2000-04-14","2000-05-03","2000-05-19","2000-06-07","2000-06-23","2000-07-12","2000-07-28","2000-08-15","2000-08-31","2000-09-19","2000-10-05","2000-10-23","2000-11-08","2000-11-27","2000-12-13","2001-01-02","2001-01-19","2001-02-06","2001-02-23","2001-03-13","2001-03-29","2001-04-17","2001-05-03","2001-05-21","2001-06-07","2001-06-25","2001-07-12","2001-07-30","2001-08-15","2001-08-31","2001-09-25","2001-10-11","2001-10-29","2001-11-14","2001-12-03","2001-12-19","2002-01-08","2002-01-25","2002-02-12","2002-03-01","2002-03-19","2002-04-05","2002-04-23","2002-05-09","2002-05-28","2002-06-13","2002-07-01","2002-07-18","2002-08-05","2002-08-21","2002-09-09","2002-09-25","2002-10-11","2002-10-29","2002-11-14","2002-12-03","2002-12-19","2003-01-08","2003-01-27","2003-02-12","2003-03-03","2003-03-19","2003-04-04","2003-04-23","2003-05-09","2003-05-28","2003-06-13","2003-07-01","2003-07-18","2003-08-05","2003-08-21","2003-09-09","2003-09-25","2003-10-13","2003-10-29","2003-11-14","2003-12-03","2003-12-19","2004-01-08","2004-01-27","2004-02-12","2004-03-02","2004-03-18","2004-04-05","2004-04-22","2004-05-10","2004-05-26","2004-06-15","2004-07-01","2004-07-20","2004-08-05","2004-08-23","2004-09-09","2004-09-27","2004-10-13","2004-10-29","2004-11-16","2004-12-03","2004-12-21","2005-01-07","2005-01-26","2005-02-11","2005-03-02","2005-03-18","2005-04-06","2005-04-22","2005-05-10","2005-05-26","2005-06-14","2005-06-30","2005-07-19","2005-08-04","2005-08-22","2005-09-08","2005-09-26","2005-10-12","2005-10-28","2005-11-15","2005-12-02","2005-12-20","2006-01-09","2006-01-26","2006-02-13","2006-03-02","2006-03-20","2006-04-05","2006-04-24","2006-05-10","2006-05-26","2006-06-14","2006-06-30","2006-07-19","2006-08-04","2006-08-22","2006-09-08","2006-09-26","2006-10-12","2006-10-30","2006-11-15","2006-12-04","2006-12-20","2007-01-10","2007-01-29","2007-02-14","2007-03-05","2007-03-21","2007-04-09","2007-04-25","2007-05-11","2007-05-30","2007-06-15","2007-07-03","2007-07-20","2007-08-07","2007-08-23","2007-09-11","2007-09-27","2007-10-15","2007-10-31","2007-11-16","2007-12-05","2007-12-21","2008-01-10","2008-01-29","2008-02-14","2008-03-04","2008-03-20","2008-04-08","2008-04-24","2008-05-12","2008-05-29","2008-06-16","2008-07-02","2008-07-21","2008-08-06","2008-08-22","2008-09-10","2008-09-26","2008-10-14","2008-10-30","2008-11-17","2008-12-04","2008-12-22","2009-01-09","2009-01-28","2009-02-13","2009-03-04","2009-03-20","2009-04-07","2009-04-24","2009-05-12","2009-05-29","2009-06-16","2009-07-02","2009-07-21","2009-08-06","2009-08-24","2009-09-10","2009-09-28","2009-10-14","2009-10-30","2009-11-17","2009-12-04","2009-12-22","2010-01-11","2010-01-28","2010-02-16","2010-03-04","2010-03-22","2010-04-08","2010-04-26","2010-05-12","2010-05-28","2010-06-16","2010-07-02","2010-07-21","2010-08-06","2010-08-24","2010-09-10","2010-09-28","2010-10-14","2010-11-01","2010-11-17","2010-12-06","2010-12-22","2011-01-10","2011-01-27","2011-02-14","2011-03-03","2011-03-21","2011-04-06","2011-04-25","2011-05-11","2011-05-27","2011-06-15","2011-07-01","2011-07-20","2011-08-05","2011-08-23","2011-09-09","2011-09-27","2011-10-13","2011-10-31","2011-11-16","2011-12-05","2011-12-21","2012-01-10","2012-01-27","2012-02-14","2012-03-02","2012-03-20","2012-04-05","2012-04-24","2012-05-10","2012-05-29","2012-06-14","2012-07-02","2012-07-19","2012-08-06","2012-08-22","2012-09-10","2012-09-26","2012-10-12","2012-11-01","2012-11-19","2012-12-06","2012-12-24","2013-01-11","2013-01-30","2013-02-15","2013-03-06","2013-03-22","2013-04-10","2013-04-26","2013-05-14","2013-05-31","2013-06-18","2013-07-05","2013-07-23","2013-08-08","2013-08-26","2013-09-12","2013-09-30","2013-10-16","2013-11-01","2013-11-19","2013-12-06","2013-12-24","2014-01-13","2014-01-30","2014-02-18","2014-03-06","2014-03-24","2014-04-09","2014-04-28","2014-05-14","2014-06-02","2014-06-18","2014-07-07","2014-07-23","2014-08-08","2014-08-26","2014-09-12","2014-09-30","2014-10-16","2014-11-03","2014-11-19","2014-12-08","2014-12-24","2015-01-13","2015-01-30","2015-02-18","2015-03-06","2015-03-24","2015-04-10","2015-04-28","2015-05-14","2015-06-02","2015-06-18","2015-07-07","2015-07-23","2015-08-10","2015-08-26","2015-09-14","2015-09-30","2015-10-16","2015-11-03","2015-11-19","2015-12-08","2015-12-24","2016-01-13","2016-02-01","2016-02-18","2016-03-07","2016-03-23","2016-04-11","2016-04-27","2016-05-13","2016-06-01","2016-06-17","2016-07-06","2016-07-22","2016-08-09","2016-08-25","2016-09-13","2016-09-29","2016-10-17","2016-11-02","2016-11-18","2016-12-07","2016-12-23","2017-01-12","2017-01-31","2017-02-16","2017-03-07","2017-03-23","2017-04-10","2017-04-27","2017-05-15","2017-06-01","2017-06-19","2017-07-06","2017-07-24","2017-08-09","2017-08-25","2017-09-13","2017-09-29","2017-10-17","2017-11-02","2017-11-20","2017-12-07","2017-12-26","2018-01-12","2018-01-31","2018-02-16","2018-03-07","2018-03-23","2018-04-11","2018-04-27","2018-05-15","2018-06-01","2018-06-19","2018-07-06","2018-07-24","2018-08-09","2018-08-27","2018-09-13","2018-10-01","2018-10-17","2018-11-02","2018-11-20","2018-12-10","2018-12-27"],"a":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0101,1.0076,1.0347,1.0347,1.065,1.0772,1.0772,1.1079,1.1639,1.1562,1.127,1.1216,1.0887,1.1299,1.1501,1.0929,1.1173,1.1646,1.2172,1.3244,1.3244,1.3244,1.3244,1.3244,1.3244,1.3244,1.3244,1.3378,1.3162,1.2791,1.3092,1.3092,1.3092,1.3601,1.3649,1.3541,1.4049,1.425,1.3659,1.4075,1.4106,1.3397,1.3759,1.4452,1.4452,1.4452,1.4452,1.4452,1.3215,1.3992,1.3992,1.3706,1.383,1.3574,1.3437,1.3606,1.3684,1.3984,1.3977,1.3977,1.3977,1.3927,1.4235,1.3957,1.3391,1.2187,1.2474,1.2206,1.2782,1.3652,1.3652,1.3906,1.3534,1.3259,1.367,1.367,1.3442,1.2985,1.3241,1.3678,1.3899,1.327,1.3049,1.276,1.2291,1.2361,1.2501,1.215,1.2626,1.2855,1.2855,1.2855,1.2855,1.2855,1.2855,1.2855,1.2591,1.2451,1.2634,1.2634,1.2426,1.2739,1.2621,1.2036,1.2317,1.2399,1.2429,1.2564,1.2564,1.2919,1.2919,1.2919,1.2919,1.2919,1.2759,1.2584,1.243,1.2457,1.2415,1.2745,1.2796,1.2917,1.3046,1.2694,1.2947,1.2947,1.2947,1.3215,1.2801,1.2729,1.282,1.3047,1.2877,1.2475,1.2695,1.278,1.2544,1.2597,1.2703,1.2703,1.2703,1.2703,1.2703,1.2703,1.2703,1.2703,1.2587,1.2095,1.2509,1.2509,1.2509,1.2375,1.2371,1.202,1.1783,1.1652,1.1732,1.1781,1.166,1.1763,1.1963,1.1984,1.1759,1.228,1.2274,1.2176,1.2086,1.189,1.2194,1.2194,1.2194,1.1911,1.1796,1.2007,1.1908,1.1769,1.2131,1.229,1.2512,1.2693,1.2962,1.2433,1.2729,1.2729,1.2729,1.2765,1.2532,1.2388,1.2623,1.2849,1.1918,1.1903,1.2132,1.2132,1.2132,1.3155,1.186,1.1338,1.1946,1.1946,1.2498,1.2194,1.2323,1.2956,1.3765,1.5017,1.5017,1.5027,1.4284,1.4064,1.4149,1.4142,1.5315,1.5656,1.5656,1.5656,1.5656,1.5656,1.5551,1.6664,1.6599,1.678,1.681,1.669,1.6849,1.7161,1.7161,1.7161,1.7161,1.7814,1.6564,1.6947,1.5548,1.6645,1.6699,1.7778,1.7769,1.7769,1.7769,1.7769,1.7769,1.7769,1.7769,1.7769,1.7769,1.7769,1.8095,1.7652,1.8157,1.8153,1.8307,1.8307,1.7809,1.8391,1.8391,1.758,1.7038,1.777,1.777,1.777,1.7288,1.7451,1.8549,1.8549,1.8549,1.8549,1.8549,1.8549,1.8549,1.8549,1.8402,1.8215,1.7872,1.7827,1.8029,1.8029,1.7905,1.7659,1.7455,1.7395,1.733,1.7317,1.6824,1.7152,1.7312,1.7188,1.6843,1.6639,1.6977,1.6977,1.7345,1.7661,1.8011,1.8209,1.8676,1.845,1.8929,1.8929,1.9042,1.9345,1.9345,1.9345,1.9345,1.9345,1.9345,1.9345,1.9345,1.9378,1.9881,1.9945,1.9945,1.9945,2.0542,2.0542,2.0542,2.0542,2.0542,2.0542,2.0541,2.1115,2.1115,2.1172,1.9996,2.1078,2.0887,2.0765,2.1099,2.1099,2.1099,2.1099,2.1099,2.1099,2.1099,2.1099,2.1099,2.1099,2.1514,2.174,2.192,2.192,2.0884,2.1019,2.0663,2.099,2.0202,2.046,2.0614,2.1119,2.0535,2.1068,2.0834,2.1095,2.0721,2.0657,2.0127,2.0543,2.0543,2.0543,2.1161,2.1454,2.1454,2.1454,2.1435,2.1678,2.143,2.1142,2.179,2.1353,2.1137,2.107,2.0959,2.0959,2.0959,2.0966,2.1066,2.1349,2.1432,2.1938,2.1938,2.1938,2.1938,2.1938,2.197,2.2364,2.2364,2.2289,2.2109,2.2105,2.2183,2.1818,2.1361,2.1066,2.2181,2.2137,2.2126,2.2587,2.3124,2.3124,2.3124,2.3124,2.3124,2.3124,2.3124,2.3124,2.3124,2.3124,2.2501,2.1811,2.1161,2.2097,2.1591],"b":[1.0,1.0057,1.0128,1.0138,1.0645,1.0474,1.05,1.0971,1.0832,1.0737,1.071,1.1385,1.0819,1.0945,1.0741,1.0647,1.0729,1.0534,1.1184,1.1463,1.1508,1.1849,1.1771,1.1597,1.1021,1.1266,1.2283,1.1046,1.1523,1.1456,1.1981,1.1737,1.2156,1.1562,1.2087,1.2358,1.1887,1.1695,1.1365,1.1475,1.0984,1.1074,1.0449,1.0932,1.1011,1.0145,0.9752,0.9347,0.9705,1.0167,1.069,1.0398,0.9923,0.9837,0.9808,0.9592,0.923,0.8243,0.8936,0.878,0.9292,0.92,0.936,0.9451,0.9228,0.9018,0.9216,0.9529,0.9142,0.8965,0.8737,0.875,0.8221,0.7887,0.7178,0.6796,0.773,0.7352,0.6837,0.6802,0.7183,0.7363,0.7497,0.72,0.7409,0.6901,0.6666,0.6798,0.7117,0.7156,0.7483,0.76,0.7762,0.805,0.7999,0.8088,0.7861,0.8169,0.8331,0.8169,0.8512,0.8534,0.8553,0.867,0.8865,0.9217,0.9316,0.9381,0.9357,0.9139,0.9369,0.9282,0.8852,0.9079,0.9218,0.9193,0.9028,0.88,0.8922,0.9107,0.8986,0.9068,0.9203,0.9571,0.9699,0.9816,0.9659,0.956,0.9814,0.9853,0.9687,0.9641,0.9381,0.9496,0.9752,0.9803,0.9701,1.001,1.0063,0.9948,1.0029,0.9898,0.9589,0.9758,1.0007,1.0301,1.0257,1.0505,1.0372,1.0283,1.0497,1.0627,1.068,1.0651,1.0772,1.0424,1.0016,1.0343,1.0258,1.0417,1.0576,1.0577,1.0881,1.1097,1.122,1.1372,1.1474,1.1591,1.1521,1.1568,1.185,1.1189,1.1685,1.1763,1.2177,1.2262,1.246,1.2482,1.2416,1.2492,1.2024,1.1909,1.1982,1.247,1.2611,1.2616,1.1878,1.2092,1.2087,1.1565,1.1093,1.0983,1.0803,1.0826,1.1119,1.1309,1.1429,1.1386,1.1075,1.0272,1.026,1.0497,1.0522,1.0032,0.9879,0.8126,0.7769,0.6927,0.6882,0.7097,0.725,0.7117,0.6733,0.5805,0.6258,0.6641,0.7053,0.7396,0.7484,0.7426,0.7299,0.7773,0.8119,0.8351,0.8502,0.8655,0.8892,0.8437,0.9041,0.9006,0.9104,0.9339,0.8831,0.8915,0.9144,0.9493,0.9661,0.9869,0.9541,0.8871,0.9076,0.8327,0.8709,0.9133,0.8565,0.9035,0.9345,0.9558,0.9644,0.9597,0.9959,1.025,1.0339,1.0582,1.0849,1.0838,1.0572,1.0875,1.0872,1.0928,1.0839,1.0304,1.0908,1.0796,0.9766,0.9465,0.9399,0.9571,0.9801,1.0205,1.0072,1.0236,1.0127,1.0521,1.0718,1.0997,1.1152,1.1445,1.1384,1.1171,1.1058,1.0849,1.0822,1.1119,1.1208,1.1353,1.151,1.1637,1.1671,1.1633,1.1624,1.1293,1.1513,1.1617,1.1986,1.223,1.2375,1.2552,1.2677,1.2928,1.2884,1.3438,1.3279,1.345,1.3288,1.3781,1.3822,1.3491,1.3708,1.3692,1.4018,1.4344,1.4558,1.4698,1.4928,1.4813,1.4609,1.4989,1.5284,1.5125,1.5245,1.5222,1.5378,1.5674,1.5935,1.6103,1.618,1.5728,1.6285,1.6168,1.606,1.5168,1.643,1.6682,1.6776,1.6952,1.6473,1.6245,1.7097,1.6866,1.703,1.7116,1.722,1.7271,1.7178,1.7273,1.6948,1.7117,1.7134,1.5801,1.5903,1.5634,1.6555,1.7179,1.6947,1.6803,1.6782,1.5392,1.5792,1.5616,1.63,1.6584,1.6627,1.706,1.6665,1.7094,1.6865,1.7097,1.7711,1.7765,1.769,1.732,1.7516,1.7315,1.7083,1.7766,1.8251,1.8433,1.8487,1.8556,1.9113,1.9285,1.9102,1.9194,1.9451,1.9561,1.9787,1.9978,1.9622,2.0112,2.0145,1.9893,2.0343,2.0514,2.084,2.1007,2.1025,2.1472,2.1826,2.2687,2.2993,2.2248,2.2203,2.1075,2.1514,2.174,2.2078,2.2267,2.2495,2.2472,2.2966,2.3236,2.3587,2.3648,2.3814,2.2874,2.2173,2.1512,2.1478,2.0266]}};
+
+const CSS = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const S1 = () => CSS('--s1'), S2 = () => CSS('--s2');
+const INK = () => CSS('--ink'), INK2 = () => CSS('--ink-2'), INK3 = () => CSS('--ink-3');
+const GRID = () => CSS('--grid'), RULE = () => CSS('--rule-2'), SURF = () => CSS('--surface');
+const CRIT = '#d03b3b';
+
+const tip = document.getElementById('tip');
+function showTip(evt, title, rows){
+  tip.innerHTML = '<div class="tt">' + title + '</div>' +
+    rows.map(r => '<div class="tr"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('');
+  tip.style.opacity = 1;
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY - h - pad;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+  if (y < 8) y = evt.clientY + pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+const hideTip = () => { tip.style.opacity = 0; };
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const f2 = v => (v >= 0 ? '' : '−') + Math.abs(v).toFixed(2);
+const pct = v => (v * 100).toFixed(v * 100 < 1 ? 2 : 1) + '%';
+
+function svg(w, h, body){
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" preserveAspectRatio="xMidYMid meet"' +
+         ' style="width:100%;min-width:' + Math.min(w, 620) + 'px;height:auto">' + body + '</svg>';
+}
+function txt(x, y, s, o){
+  o = o || {};
+  return '<text x="' + x + '" y="' + y + '" fill="' + (o.fill || INK3()) +
+    '" font-size="' + (o.size || 11.5) + '" font-weight="' + (o.weight || 400) +
+    '" text-anchor="' + (o.anchor || 'start') + '"' +
+    (o.mono ? ' font-family="IBM Plex Mono, monospace"' : '') +
+    ' style="font-variant-numeric:tabular-nums">' + esc(s) + '</text>';
+}
+
+/* ---------- horizontal grouped bars ---------- */
+function hBars(el, rows, opts){
+  const W = 820, padL = 88, padR = 20, padT = 8, padB = 34;
+  const rowH = opts.rowH || 54, gap = 6, barH = (rowH - gap * 3) / 2;
+  const H = padT + rows.length * rowH + padB;
+  const vals = rows.flatMap(r => [r.a, r.b]);
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const span = hi - lo || 1;
+  lo -= span * 0.02; hi += span * 0.16;
+  const x = v => padL + (v - lo) / (hi - lo) * (W - padL - padR);
+  let s = '';
+  const zero = x(0);
+  [lo, (lo + hi) / 2, hi].forEach(t => {});
+  s += '<line x1="' + zero + '" y1="' + padT + '" x2="' + zero + '" y2="' + (H - padB) +
+       '" stroke="' + RULE() + '" stroke-width="1"/>';
+  rows.forEach((r, i) => {
+    const y0 = padT + i * rowH + gap;
+    s += txt(padL - 12, y0 + barH + 4, r.label, {anchor:'end', fill:INK(), size:12.5, weight:500});
+    [[r.a, S1(), opts.nameA], [r.b, S2(), opts.nameB]].forEach((d, j) => {
+      const v = d[0], y = y0 + j * (barH + gap);
+      const xa = x(Math.min(0, v)), xb = x(Math.max(0, v));
+      const w = Math.max(1.5, xb - xa);
+      s += '<rect class="hb" x="' + xa + '" y="' + y + '" width="' + w + '" height="' + barH +
+           '" rx="2" fill="' + d[1] + '" stroke="' + SURF() + '" stroke-width="1"' +
+           ' data-t="' + esc(r.label) + '" data-k="' + esc(d[2]) + '" data-v="' +
+           esc(opts.fmt(v)) + '"/>';
+      const lbl = opts.fmt(v), est = lbl.length * 7;
+      const outside = v >= 0 ? xb + 7 : xa - 7;
+      const fits = v >= 0 ? true : (outside - est) > padL;
+      s += txt(fits ? outside : xa + 8, y + barH / 2 + 4, lbl, {
+        anchor: fits ? (v >= 0 ? 'start' : 'end') : 'start',
+        fill: fits ? INK2() : SURF(), size: 11.5, mono: true, weight: fits ? 400 : 500});
+    });
+  });
+  s += txt(zero, H - 12, '0', {anchor:'middle', size:11, mono:true});
+  el.innerHTML = svg(W, H, s);
+  el.querySelectorAll('.hb').forEach(n => {
+    n.addEventListener('mousemove', e => showTip(e, n.dataset.t, [[n.dataset.k, n.dataset.v]]));
+    n.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* ---------- histogram with markers ---------- */
+function histogram(el, cfg){
+  const W = 820, H = 300, padL = 44, padR = 24, padT = 26, padB = 46;
+  const xs = cfg.samples.slice().sort((a, b) => a - b);
+  const lo = Math.min(xs[0], cfg.observed) - 0.05;
+  const hi = Math.max(xs[xs.length - 1], cfg.observed) + 0.05;
+  const nb = 30, bw = (hi - lo) / nb;
+  const bins = new Array(nb).fill(0);
+  xs.forEach(v => { bins[Math.min(nb - 1, Math.floor((v - lo) / bw))]++; });
+  const maxC = Math.max(...bins);
+  const x = v => padL + (v - lo) / (hi - lo) * (W - padL - padR);
+  const y = c => H - padB - c / maxC * (H - padT - padB);
+  let s = '';
+  for (let c = 0; c <= maxC; c += Math.ceil(maxC / 4)){
+    s += '<line x1="' + padL + '" y1="' + y(c) + '" x2="' + (W - padR) + '" y2="' + y(c) +
+         '" stroke="' + GRID() + '" stroke-width="1"/>' + txt(padL - 8, y(c) + 4, c, {anchor:'end', size:11, mono:true});
+  }
+  bins.forEach((c, i) => {
+    if (!c) return;
+    const x0 = x(lo + i * bw), x1 = x(lo + (i + 1) * bw);
+    s += '<rect class="hb" x="' + (x0 + 1) + '" y="' + y(c) + '" width="' + Math.max(1, x1 - x0 - 2) +
+         '" height="' + (H - padB - y(c)) + '" rx="2" fill="' + INK3() + '" fill-opacity="0.42"' +
+         ' data-t="Sharpe ' + f2(lo + i * bw) + ' to ' + f2(lo + (i + 1) * bw) +
+         '" data-k="null runs" data-v="' + c + '"/>';
+  });
+  s += '<line x1="' + padL + '" y1="' + (H - padB) + '" x2="' + (W - padR) + '" y2="' + (H - padB) +
+       '" stroke="' + RULE() + '"/>';
+  for (let t = Math.ceil(lo * 2) / 2; t <= hi; t += 0.5){
+    s += txt(x(t), H - padB + 18, f2(t), {anchor:'middle', size:11, mono:true});
+  }
+  s += txt((padL + W - padR) / 2, H - 10, 'net Sharpe', {anchor:'middle', size:11.5});
+  // p95 marker
+  s += '<line x1="' + x(cfg.p95) + '" y1="' + padT + '" x2="' + x(cfg.p95) + '" y2="' + (H - padB) +
+       '" stroke="' + INK3() + '" stroke-width="1.5" stroke-dasharray="4 3"/>';
+  s += txt(x(cfg.p95) + 6, padT + 12, 'null 95th pct ' + f2(cfg.p95), {size:11.5, fill:INK2()});
+  // observed marker
+  s += '<line x1="' + x(cfg.observed) + '" y1="' + (padT - 8) + '" x2="' + x(cfg.observed) + '" y2="' + (H - padB) +
+       '" stroke="' + S1() + '" stroke-width="2.5"/>';
+  s += txt(x(cfg.observed) - 8, padT - 12, 'observed ' + f2(cfg.observed), {anchor:'end', size:12.5, fill:S1(), weight:600});
+  el.innerHTML = svg(W, H, s);
+  el.querySelectorAll('.hb').forEach(n => {
+    n.addEventListener('mousemove', e => showTip(e, n.dataset.t, [[n.dataset.k, n.dataset.v]]));
+    n.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* ---------- range / dot plot ---------- */
+function rangePlot(el, rows){
+  const W = 820, padL = 88, padR = 104, padT = 30, padB = 40, rowH = 46;
+  const H = padT + rows.length * rowH + padB;
+  const vals = rows.flatMap(r => [r.min, r.max, r.nullMax]);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const sp = hi - lo; lo -= sp * 0.05; hi += sp * 0.05;
+  const x = v => padL + (v - lo) / (hi - lo) * (W - padL - padR);
+  let s = '';
+  s += '<line x1="' + x(0) + '" y1="' + padT + '" x2="' + x(0) + '" y2="' + (H - padB) +
+       '" stroke="' + RULE() + '"/>';
+  s += txt(x(0), padT - 12, '0', {anchor:'middle', size:11, mono:true});
+  rows.forEach((r, i) => {
+    const y = padT + i * rowH + rowH / 2;
+    s += txt(padL - 12, y + 4, r.label, {anchor:'end', fill:INK(), size:12.5, weight:500});
+    s += '<line x1="' + x(r.min) + '" y1="' + y + '" x2="' + x(r.max) + '" y2="' + y +
+         '" stroke="' + INK3() + '" stroke-width="3" stroke-opacity=".35" stroke-linecap="round"/>';
+    s += '<circle class="dot" cx="' + x(r.median) + '" cy="' + y + '" r="5" fill="' + INK3() +
+         '" stroke="' + SURF() + '" stroke-width="2" data-t="' + esc(r.label) +
+         '" data-k="median of 648" data-v="' + f2(r.median) + '"/>';
+    s += '<circle class="dot" cx="' + x(r.max) + '" cy="' + y + '" r="6" fill="' + S1() +
+         '" stroke="' + SURF() + '" stroke-width="2" data-t="' + esc(r.label) +
+         '" data-k="best of 648" data-v="' + f2(r.max) + '"/>';
+    const dx = x(r.nullMax);
+    s += '<path class="dot" d="M' + dx + ' ' + (y - 7) + 'L' + (dx + 6) + ' ' + y + 'L' + dx + ' ' + (y + 7) +
+         'L' + (dx - 6) + ' ' + y + 'Z" fill="none" stroke="' + S2() + '" stroke-width="2"' +
+         ' data-t="' + esc(r.label) + '" data-k="expected best if no skill" data-v="' + f2(r.nullMax) + '"/>';
+    s += txt(W - 12, y + 4, 'DSR ' + r.dsr.toFixed(2),
+             {anchor:'end', size:11, mono:true, fill: r.dsr >= 0.95 ? INK() : INK3()});
+  });
+  for (let t = Math.ceil(lo * 2) / 2; t <= hi; t += 0.5){
+    if (Math.abs(t) < 0.001) continue;
+    s += txt(x(t), H - 14, f2(t), {anchor:'middle', size:11, mono:true});
+  }
+  el.innerHTML = svg(W, H, s);
+  el.querySelectorAll('.dot').forEach(n => {
+    n.addEventListener('mousemove', e => showTip(e, n.dataset.t, [[n.dataset.k, n.dataset.v]]));
+    n.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* ---------- slope chart ---------- */
+function slopeChart(el, rows){
+  const W = 820, H = 340, padT = 44, padB = 44, xa = 268, xb = 566;
+  const vals = rows.flatMap(r => [r.is, r.oos]);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const sp = hi - lo; lo -= sp * .1; hi += sp * .1;
+  const y = v => H - padB - (v - lo) / (hi - lo) * (H - padT - padB);
+  let s = '';
+  s += '<line x1="' + xa + '" y1="' + (padT - 14) + '" x2="' + xa + '" y2="' + (H - padB + 8) + '" stroke="' + GRID() + '"/>';
+  s += '<line x1="' + xb + '" y1="' + (padT - 14) + '" x2="' + xb + '" y2="' + (H - padB + 8) + '" stroke="' + GRID() + '"/>';
+  s += txt(xa, padT - 24, 'best in-sample', {anchor:'middle', size:12, fill:INK2(), weight:500});
+  s += txt(xb, padT - 24, 'what it earned out-of-sample', {anchor:'middle', size:12, fill:INK2(), weight:500});
+  s += '<line x1="' + (xa - 48) + '" y1="' + y(0) + '" x2="' + (xb + 60) + '" y2="' + y(0) +
+       '" stroke="' + RULE() + '" stroke-dasharray="3 3"/>';
+  s += txt(xa - 52, y(0) + 4, 'zero', {size:11, fill:INK3(), anchor:'end'});
+  const nudge = (items) => {
+    items.sort((p, q) => p.y - q.y);
+    for (let i = 1; i < items.length; i++)
+      if (items[i].y - items[i - 1].y < 16) items[i].y = items[i - 1].y + 16;
+    return items;
+  };
+  const leftLab = nudge(rows.map(r => ({y: y(r.is), t: r.label + '  ' + f2(r.is)})));
+  const rightLab = nudge(rows.map(r => ({y: y(r.oos), t: f2(r.oos), neg: r.oos < 0})));
+  leftLab.forEach(l => s += txt(xa - 12, l.y + 4, l.t, {anchor:'end', size:12, fill:INK()}));
+  rightLab.forEach(l => s += txt(xb + 12, l.y + 4, l.t,
+    {size:12, fill: l.neg ? CRIT : INK(), mono:true}));
+  rows.forEach(r => {
+    s += '<line class="sl" x1="' + xa + '" y1="' + y(r.is) + '" x2="' + xb + '" y2="' + y(r.oos) +
+         '" stroke="' + S1() + '" stroke-width="2" stroke-opacity=".8" data-t="' + esc(r.label) +
+         '" data-a="' + f2(r.is) + '" data-b="' + f2(r.oos) + '"/>';
+    s += '<circle cx="' + xa + '" cy="' + y(r.is) + '" r="4.5" fill="' + S1() + '" stroke="' + SURF() + '" stroke-width="2"/>';
+    s += '<circle cx="' + xb + '" cy="' + y(r.oos) + '" r="4.5" fill="' + S1() + '" stroke="' + SURF() + '" stroke-width="2"/>';
+  });
+  el.innerHTML = svg(W, H, s);
+  el.querySelectorAll('.sl').forEach(n => {
+    n.addEventListener('mousemove', e => showTip(e, n.dataset.t,
+      [['in-sample', n.dataset.a], ['out-of-sample', n.dataset.b]]));
+    n.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* ---------- line chart with crosshair ---------- */
+function lineChart(el, cfg){
+  const W = 820, H = 340, padL = 48, padR = 58, padT = 20, padB = 40;
+  const n = cfg.dates.length;
+  const vals = cfg.a.concat(cfg.b);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  lo = Math.min(lo, 0.5); hi *= 1.04;
+  const x = i => padL + i / (n - 1) * (W - padL - padR);
+  const y = v => H - padB - (v - lo) / (hi - lo) * (H - padT - padB);
+  let s = '';
+  for (let t = Math.ceil(lo * 2) / 2; t <= hi; t += 0.5){
+    s += '<line x1="' + padL + '" y1="' + y(t) + '" x2="' + (W - padR) + '" y2="' + y(t) +
+         '" stroke="' + GRID() + '"/>' + txt(padL - 8, y(t) + 4, t.toFixed(1), {anchor:'end', size:11, mono:true});
+  }
+  const yrs = {};
+  cfg.dates.forEach((d, i) => { const yr = d.slice(0, 4); if (!(yr in yrs) && yr % 4 === 0) yrs[yr] = i; });
+  Object.entries(yrs).forEach(([yr, i]) => s += txt(x(i), H - padB + 18, yr, {anchor:'middle', size:11, mono:true}));
+  const path = arr => arr.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join('');
+  s += '<path d="' + path(cfg.b) + '" fill="none" stroke="' + S2() + '" stroke-width="2" stroke-linejoin="round"/>';
+  s += '<path d="' + path(cfg.a) + '" fill="none" stroke="' + S1() + '" stroke-width="2" stroke-linejoin="round"/>';
+  s += txt(x(n - 1) + 8, y(cfg.a[n - 1]) + 4, cfg.a[n - 1].toFixed(2), {size:12, fill:S1(), weight:600, mono:true});
+  s += txt(x(n - 1) + 8, y(cfg.b[n - 1]) + 4, cfg.b[n - 1].toFixed(2), {size:12, fill:S2(), weight:600, mono:true});
+  s += '<line id="xh" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" stroke="' + RULE() +
+       '" stroke-width="1" opacity="0"/>';
+  s += '<rect id="hit" x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' +
+       (H - padT - padB) + '" fill="transparent"/>';
+  el.innerHTML = svg(W, H, s);
+  const root = el.querySelector('svg'), xh = el.querySelector('#xh');
+  el.querySelector('#hit').addEventListener('mousemove', e => {
+    const r = root.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width * W;
+    const i = Math.max(0, Math.min(n - 1, Math.round((px - padL) / (W - padL - padR) * (n - 1))));
+    xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.setAttribute('opacity', 1);
+    showTip(e, cfg.dates[i], [['channel switch', cfg.a[i].toFixed(2)], ['buy & hold', cfg.b[i].toFixed(2)]]);
+  });
+  el.querySelector('#hit').addEventListener('mouseleave', () => { xh.setAttribute('opacity', 0); hideTip(); });
+}
+
+/* ---------- tables ---------- */
+const cell = (v, cls) => '<td class="num ' + (cls || '') + (typeof v === 'number' && v < 0 ? ' neg' : '') + '">' +
+  (typeof v === 'number' ? f2(v) : v) + '</td>';
+
+function render(){
+  hBars(document.getElementById('c-scoreboard'),
+    DATA.scoreboard.map(r => ({label: r.inst, a: r.strategy, b: r.bh})),
+    {nameA: 'channel switch', nameB: 'buy & hold', fmt: f2});
+
+  hBars(document.getElementById('c-triggers'),
+    DATA.triggers.map(r => ({label: r.inst, a: r.price, b: r.sma})),
+    {nameA: 'price beyond band', nameB: '20-SMA beyond band', fmt: pct, rowH: 50});
+
+  histogram(document.getElementById('c-null'), DATA.nullSp500);
+
+  rangePlot(document.getElementById('c-grid'), DATA.grid
+    .filter(r => r.inst !== 'EURUSD')
+    .map(r => ({label: r.inst, min: r.min, median: r.median, max: r.max,
+                nullMax: r.nullMax, dsr: r.dsr})));
+
+  slopeChart(document.getElementById('c-wf'),
+    DATA.grid.map(r => ({label: r.inst, is: r.isMean, oos: r.oos})));
+
+  lineChart(document.getElementById('c-equity'), DATA.equity);
+
+  document.getElementById('t-structure').innerHTML = DATA.structure.map(r =>
+    '<tr><td class="name">' + r.inst + '</td>' + cell(r.full) + cell(r.mr) +
+    '<td class="num">' + pct(r.tfBars) + '</td><td class="num">' + r.tfTrades + '</td></tr>').join('');
+
+  document.getElementById('t-beta').innerHTML = DATA.beta.map(r =>
+    '<tr><td class="name">' + r.inst + '</td>' + cell(r.sharpe) + cell(r.beta) +
+    '<td class="num' + (r.alpha < 0 ? ' neg' : '') + '">' + (r.alpha < 0 ? '−' : '') +
+      Math.abs(r.alpha * 100).toFixed(1) + '%</td>' +
+    cell(r.t) + cell(r.longPnl) + cell(r.shortPnl) + '</tr>').join('');
+
+  document.getElementById('t-robust').innerHTML = DATA.grid.map(r =>
+    '<tr><td class="name">' + r.inst + '</td>' + cell(r.max) + cell(r.median) +
+    '<td class="num">' + r.dsr.toFixed(2) + '</td><td class="num">' + r.pbo.toFixed(2) + '</td>' +
+    cell(r.oos) + '<td><span class="pill ' + r.cls + '">' + r.verdict + '</span></td></tr>').join('');
+
+  document.getElementById('t-variants').innerHTML = DATA.variants.map(r =>
+    '<tr' + (r.mean === Math.max(...DATA.variants.map(v => v.mean)) ? ' class="total"' : '') +
+    '><td class="name">' + r.label + '</td>' +
+    r.v.map(x => cell(x)).join('') + cell(r.mean) + '</tr>').join('');
+}
+render();
+let last = matchMedia('(prefers-color-scheme: dark)').matches;
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+new MutationObserver(render).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+</script>
+
