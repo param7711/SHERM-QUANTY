@@ -20,3 +20,6 @@ database/rl_*.json
 
 # Research datasets — regenerated via `python research/channel_regime/data.py`
 data/research/*.parquet
+
+# Indian market data — regenerated via `python research/channel_regime/data_in.py`
+data/research_in/*.parquet
