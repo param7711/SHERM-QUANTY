@@ -458,3 +458,132 @@ gate is the use case, the vol cap is not earning its complexity here.
   cross-instrument split (indices work, commodity/stock/FX do not) is the
   thing most likely to be a sample artefact, and the thing NIFTY data would
   settle fastest.
+
+---
+
+# v4 — NIFTY, BANK NIFTY and 15 constituents
+
+**It does not transfer. The Indian indices are not mean-reverting, and the
+strategy is a mean-reversion strategy.**
+
+## Data
+
+NSE end-of-day bars from `BennyThadikaran/eod2_data` (public GitHub, pinned
+at `8761629d`), reached through the anonymous git lane — NSE's own archives
+are 403 at this sandbox's egress proxy like every other market-data host.
+
+`data_in.py` screens every series for unadjusted corporate actions before
+use: a split the vendor never adjusted shows up as a one-day return near
+−50%/−67%/−90% and would hand a band-break rule a free fictional signal.
+Six were caught — **ITC −92.7% on 2005-09-21** (1:10 split), INFY −74.5%
+on 2004-07-01, RELIANCE, BHARTIARTL, KOTAKBANK, ASIANPAINT — and each
+series starts the bar after its last event rather than being discarded.
+
+| | Series | Span | Bars |
+|---|---|---|---|
+| Indices | NIFTY 50, NIFTY BANK, NIFTY 500 | 2012-02 → 2026-08 | 3,583 each |
+| Stocks | 15 majors (RELIANCE, HDFCBANK, TCS, INFY, ITC, SBIN …) | 1995 → 2026, post-trim | 3,944 – 7,828 |
+
+## The result
+
+Spec R5 — the DevLucem 2σ fade, gated to RegDet SIDEWAYS, capped at the
+2.0σ outer band; the exact configuration that scored +0.73 / +0.51 on the
+S&P and Nasdaq:
+
+| | R5 Sharpe | Buy & hold | Beta | Alpha t (NW) |
+|---|---|---|---|---|
+| **NIFTY 50** | **−0.281** | +0.719 | 0.237 | **−2.07** |
+| **BANK NIFTY** | **−0.314** | +0.632 | 0.176 | −1.78 |
+| NIFTY 500 | +0.013 | +0.813 | 0.048 | −0.29 |
+| 15 stocks (mean) | +0.055 | +0.652 | 0.014 | +0.14 |
+
+Positive on 9 of 18. One stock clears t > 1.96 (TCS, 2.32) — which is
+exactly what 15 independent tests deliver by chance. NIFTY 50's alpha is
+significantly **negative**.
+
+## Why — measured, not asserted
+
+`mechanism.py` computes the same four diagnostics on all 23 series. The one
+that matters is the **variance ratio**: VR(k) = Var(k-bar return) /
+(k × Var(1-bar return)). Below 1 the series reverts; above 1 it trends. A
+band-fade is a direct bet on VR < 1.
+
+| Class | AC(1) | VR(5) | VR(20) | Lower-band break: 5-day excess | t |
+|---|---|---|---|---|---|
+| **US indices** | **−0.052** | **0.857** | **0.753** | **+0.40%** | **+2.43** |
+| **Indian indices** | **+0.020** | **1.026** | **1.071** | **−0.21%** | −0.91 |
+| Indian stocks | +0.016 | 0.985 | 0.946 | +0.08% | +0.35 |
+| US stock (GOOG) | +0.006 | 1.007 | 1.075 | −0.59% | −1.62 |
+| **FX (EUR/USD)** | **−0.012** | **0.986** | **0.957** | **−0.01%** | −0.43 |
+| WTI | −0.017 | 0.920 | 0.799 | −0.13% | −0.69 |
+
+Read the second and last columns together and the whole cross-instrument
+pattern falls out:
+
+* **US indices are the outlier, not the norm.** VR(20) = 0.75 means a
+  20-day move is a quarter smaller than a random walk implies. That is a
+  large, real reversion effect, and the event study confirms it pays: after
+  price closes below the DevLucem lower band, the next five days beat the
+  unconditional drift by 0.40%, t = 2.43. The strategy is harvesting that
+  and nothing else.
+* **FX is a random walk.** VR(5) = 0.986, VR(20) = 0.957, AC(1) = −0.012,
+  band-break excess −0.01% with t = −0.43. There is no reversion to fade
+  and no trend to follow at this horizon — so the fade collects costs and
+  whatever drift it happens to lean against. EUR/USD's −2.6 Sharpe is not
+  the strategy being wrong about FX; it is the strategy trading noise in a
+  sample that happened to trend.
+* **Indian indices trend.** VR(20) = 1.07 and AC(1) is *positive*. A NIFTY
+  band break is followed by continuation, not reversion — in 2019-2026 the
+  lower-band excess is −0.62% at t = −2.09, i.e. significantly the wrong
+  way. Fading it is backwards.
+* **Single stocks reprice.** GOOG VR(20) = 1.075. A single name's move
+  through a band is usually news being priced, which does not come back.
+  Indian stocks sit in between (VR(20) = 0.95) and are mildly fadeable on
+  the upper band only (mean t = +1.76), which is a short-rallies effect,
+  not a dip-buying one.
+
+### The explanation that does *not* survive
+
+The standard story for index mean-reversion is the leverage effect —
+panics spike volatility, the fade sells the variance premium. Measured,
+that story fails: leverage correlation is −0.152 for US indices and
+−0.144 for Indian ones, essentially identical. India has the same
+vol-return asymmetry and none of the reversion. What differs is the
+**bounce**: the 5-day return after a 1-sd down day minus that after a 1-sd
+up day is **+0.48%** for US indices and **−0.17%** for Indian ones. US
+down-days bounce; Indian down-days keep going.
+
+### And it is the market, not the era
+
+The obvious objection — the US sample is 1999-2018, the Indian one
+2012-2026 — is testable on the overlapping window:
+
+| 2012–2018 only | VR(20) | AC(1) | Lower-break t | R5 Sharpe |
+|---|---|---|---|---|
+| S&P 500 | 0.676 | −0.009 | +2.63 | **+0.557** |
+| Nasdaq | 0.709 | −0.002 | +3.24 | **+0.814** |
+| NIFTY 50 | 0.952 | +0.071 | +1.41 | **−0.308** |
+| BANK NIFTY | 1.045 | +0.076 | +1.36 | **−0.493** |
+
+Same seven years, opposite behaviour. The split is between markets, not
+between periods.
+
+## What this means for the hypothesis
+
+The v3 read was "it works on equity indices". The correct read is narrower:
+**it works on US equity indices, because those specific series mean-revert
+at the 5-20 day horizon and most things do not.** NIFTY and BANK NIFTY —
+the instruments this system is actually built to trade — are on the wrong
+side of that line, and the strategy's alpha there is negative.
+
+Two consequences worth acting on:
+
+1. **Screen before you build.** VR(20) and the band-break event study cost
+   nothing and are computable on any candidate instrument before a single
+   line of strategy code. Anything with VR(20) ≥ 1 should never see a fade.
+   Both numbers are in `mechanism.py`.
+2. **For NIFTY, the sign is the finding.** Positive AC(1), VR(20) > 1 and a
+   significantly negative lower-band excess in 2019-2026 all say the same
+   thing: Indian indices continue after a band break. That is a
+   *trend-following* setup on the same indicator, and it is the version
+   worth testing next — the exact opposite of the fade.
