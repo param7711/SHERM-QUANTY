@@ -1,0 +1,5 @@
+spec,SP500,trades,exp,NASDAQ,WTI,GOOG,EURUSD,daily_mean,all_mean
+"v1  SMA vs 2s band, exit at centre",0.392,99,0.494,0.096,0.17,-0.472,-3.329,0.047,-0.629
+A   0.3 band as the trend trigger,-0.411,615,0.874,-0.11,-0.245,0.597,-9.358,-0.042,-1.905
+B   0.3 band as the MR exit zone,0.285,139,0.288,0.062,0.218,-0.633,-4.308,-0.017,-0.875
+B*  best cell of the 0.3/cap sweep,0.39,189,0.213,0.339,0.262,-0.495,-5.068,0.124,-0.914

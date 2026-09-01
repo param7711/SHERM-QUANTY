@@ -191,3 +191,123 @@ Roughly 12 minutes end to end. Outputs land in `results/channel_regime/`
 * `backtest.py` asserts the realised position is exactly the signal lagged one
   bar, that costs strictly reduce P&L, and that positions stay in {−1, 0, +1}.
 * Sharpe, PBO and deflated Sharpe are all computed on net-of-cost returns.
+
+---
+
+# v2 — the specified indicators
+
+v1 tested the idea as described in prose. This section tests it against the
+two indicators actually named: **Linear Regression ++ [Dev Lucem]** for the
+channel, and a **20-SMA with inner bands at 0.3 stdev** for the mean.
+
+## DevLucem's exact settings, verified against the published source
+
+TradingView is blocked by this sandbox's egress policy (403 at the proxy for
+`www.tradingview.com`, and for every search engine), so the Pine v5 source was
+read from a public mirror on GitHub instead. Defaults, from the script itself:
+
+| Input | Default |
+|---|---|
+| `source` | `close` |
+| `length` | **100** |
+| `dev` (deviation multiplier) | **2.0** |
+| `offset` | 0 |
+| `smoothing` | 1 (no smoothing of the regression output) |
+| Resolution | chart timeframe |
+
+The band half-width is the part that matters:
+
+```pine
+deviationSum += math.pow(source[i] - (slope * (x - i) + intercept), 2)
+deviation = math.sqrt(deviationSum / length)
+```
+
+Divided by `length`, **not** `length - 2` — the population standard deviation
+of the residuals. v1 used the textbook `n-2` correction, which makes the bands
+`sqrt(100/98) = 1.0102x` too wide. `dev_ddof=0` is now the default in `Params`;
+the v1 CSVs reproduce with `dev_ddof=2`.
+
+Two further details taken from the source rather than assumed:
+
+* `linreg = ta.linreg(source, length, offset)` is the fitted value at the
+  window's **endpoint**, and `slope = linreg - linreg_p` is the fitted line's
+  per-bar slope. Both match the v1 channel exactly.
+* The indicator's own alerts are `ta.crossunder(close, lower)` and
+  `ta.crossover(close, upper)` — it is a **fade**, and it fires on the band
+  itself, not near it. So `entry_frac = 1.0`, not v1's 0.9.
+
+`channel.py` now carries `devlucem_reference()`, a deliberately unvectorised
+transcription of the Pine in Pine's own variable names, and `_pine_parity_check()`
+asserts the fast path matches it. Max absolute difference over 500 bars:
+centre 9.1e-13, slope 2.3e-13, sigma 1.8e-14, z 5.2e-14.
+
+## The 0.3-sigma inner band
+
+Implemented as `inner_sd=0.3` on `SMA(close, 20)` with `stdev(close, 20)`
+population (Pine's `ta.stdev` convention). Measured share of bars with price
+outside that band:
+
+| | SP500 | NASDAQ | WTI | GOOG | EURUSD |
+|---|---|---|---|---|---|
+| beyond 0.3 sd | 88.9% | 88.4% | 87.3% | 89.1% | 88.1% |
+| beyond 1.5 sd | 30.4% | 32.4% | 30.7% | 34.1% | 29.2% |
+| beyond 2.0 sd | 10.2% | 10.8% | 11.8% | 13.2% | 13.8% |
+
+This is the exact mirror of v1's problem. There the trigger fired on 0.3% of
+bars; here it fires on 89%. Used as a **trigger** the 0.3 band is unusable —
+spec S2 puts the system in the market 87% of the time over 610 trades for a
+Sharpe of −0.42 on the S&P. Used as an **exit** it cuts winners short: S1
+scores below S0 on three of five instruments. Its useful role is the third
+one: a **no-fade zone**, which is what the cap turns out to be.
+
+## The cap: 1.5 sigma, and it is a plateau
+
+Sweeping the distance from the 20-SMA past which no new fade is opened
+(`14_cap_sweep.csv`), on the DevLucem fade with the exit at the regression
+centre:
+
+| cap | SP500 | NASDAQ | WTI | GOOG | EURUSD |
+|---|---|---|---|---|---|
+| 1.00 | +0.264 | +0.271 | −0.094 | −0.197 | −2.340 |
+| 1.25 | +0.592 | +0.264 | −0.234 | −0.353 | −3.346 |
+| **1.50** | **+0.693** | +0.264 | −0.166 | −0.535 | −2.791 |
+| 1.75 | +0.678 | +0.194 | −0.105 | −0.660 | −3.136 |
+| 2.00 | +0.629 | +0.144 | +0.011 | −0.570 | −3.269 |
+| 2.50 | +0.395 | +0.139 | −0.036 | −0.510 | −3.202 |
+| none | +0.375 | +0.125 | +0.024 | −0.489 | −3.337 |
+
+On the S&P 500 this is the first result in the study that behaves like a real
+effect rather than a fitted one:
+
+* **A plateau, not a spike.** 1.25 → 2.00 all score 0.59–0.74 (peak 0.74 at
+  1.60). v1's grid had no such shape anywhere.
+* **Positive in every sub-period** — 1999-04 +1.24, 2004-09 +0.27,
+  2009-14 +0.87, 2014-19 +0.46.
+* **Survives costs.** 49 trades in 20 years; Sharpe 0.72 gross, 0.69 at 5 bps,
+  0.55 at 30 bps.
+* **Clears its null.** 400 sign-flip runs: observed 0.693 against a null mean
+  of −0.003, sd 0.235, 95th percentile 0.387 — p = 0.003. Corrected for the
+  16 cap/exit cells searched, family-wise p ≈ 0.047.
+
+And the reasons not to bank it yet:
+
+* **It is one instrument.** NASDAQ is flat-to-mildly-positive; WTI, GOOG and
+  EUR/USD are unhelped or worse at every cap. Count instrument selection as
+  part of the search (16 cells × 5 instruments) and the corrected p is ≈ 0.24.
+* **The economics are still long-biased.** This is the v1 dip-buyer with a
+  falling-knife filter; it has not been re-tested for beta-adjusted alpha.
+* **It has not been walk-forwarded or PBO'd** under the v2 spec, and it has
+  never seen NIFTY or BANKNIFTY.
+
+Recommended setting: **cap at 1.5 sd** — mid-plateau, not the peak, which is
+the setting least likely to be an artefact of where the peak happened to land.
+
+## Still unverified
+
+The **RegDet BB IL** indicator itself could not be read. It is not on any
+branch of this repo (`regdet/` on `claude/regdet-intraday-forex-3votj4`
+contains the regime detector and its Pine port, no Bollinger indicator), it
+returns nothing on GitHub code search, and TradingView is blocked here. What
+is implemented is what was specified in words: mean = SMA(close, 20), inner
+bands at 0.3 population stdev. If the real indicator has an outer band, a
+different stdev basis, or its own cap, those numbers change.

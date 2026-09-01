@@ -516,6 +516,82 @@ def stage_signflip(reps: int = 500) -> pd.DataFrame:
     return df
 
 
+
+# ---------------------------------------------------------------------------
+# 13  the specified indicators: DevLucem Lin Reg ++ and the 0.3s inner band
+# ---------------------------------------------------------------------------
+
+# Linear Regression ++ [Dev Lucem], Pine v5, verified against the published
+# source: source=close, length=100, deviation=2.0, offset=0, smoothing=1,
+# and the band half-width is sqrt(sum(resid^2)/length) -- population, not
+# n-2. Its own alerts fire on a band CROSS, so the fade entry is at |z| = k
+# exactly (entry_frac = 1.0), not at 0.9k.
+DEVLUCEM = dict(n=100, k=2.0, entry_frac=1.0, dev_ddof=0)
+
+# The 20-SMA inner band from the RegDet BB indicator: mean = SMA(close, 20),
+# inner bands at 0.3 population stdev of close over the same 20 bars.
+INNER_SD = 0.3
+
+SPECS = {
+    'v1  legacy: SMA vs regression band, n-2 sigma':
+        Params(trend_trigger='sma', entry_frac=0.9, exit_z=0.0, dev_ddof=2),
+    'S0  DevLucem fade, exit at the regression centre':
+        Params(**DEVLUCEM, use_tf=False, exit_z=0.0),
+    'S1  DevLucem fade, exit inside the 0.3s inner band':
+        Params(**DEVLUCEM, use_tf=False, mr_exit='inner', inner_sd=INNER_SD),
+    'S2  inner band as the trend trigger, fade otherwise':
+        Params(**DEVLUCEM, trend_trigger='inner', inner_sd=INNER_SD),
+    'S3  S1 plus a 2.0s cap on new fades':
+        Params(**DEVLUCEM, use_tf=False, mr_exit='inner', inner_sd=INNER_SD,
+               cap_sd=2.0),
+}
+
+
+def stage_specs() -> pd.DataFrame:
+    rows = []
+    for label, p in SPECS.items():
+        row = {'spec': label}
+        sh = []
+        for inst in INSTRUMENTS:
+            m = run(D.load(inst)['close'], p, D.BARS_PER_YEAR[inst],
+                    cost_bps=COST_BPS)
+            row[inst] = m['sharpe']
+            if inst == 'SP500':
+                row['trades'] = m['n_trades']
+                row['exposure'] = m['exposure']
+            sh.append(m['sharpe'])
+        row['daily_mean'] = float(np.mean(sh[:4]))   # EURUSD is hourly
+        row['all_mean'] = float(np.mean(sh))
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    _save(df, '13_specs')
+    return df
+
+
+def stage_cap() -> pd.DataFrame:
+    """How far from the 20-SMA should a fade stop being allowed?"""
+    rows = []
+    for exit_style in ('center', 'inner'):
+        for cap in (0.0, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0):
+            p = Params(**DEVLUCEM, use_tf=False, mr_exit=exit_style,
+                       inner_sd=INNER_SD, cap_sd=cap, cap_blocks_mr=True)
+            row = {'mr_exit': exit_style, 'cap_sd': cap if cap else np.nan}
+            sh, tr = [], []
+            for inst in INSTRUMENTS:
+                m = run(D.load(inst)['close'], p, D.BARS_PER_YEAR[inst],
+                        cost_bps=COST_BPS)
+                row[inst] = m['sharpe']
+                sh.append(m['sharpe'])
+                tr.append(m['n_trades'])
+            row['daily_mean'] = float(np.mean(sh[:4]))
+            row['n_positive'] = int(sum(x > 0 for x in sh[:4]))
+            row['trades'] = int(np.sum(tr))
+            rows.append(row)
+    df = pd.DataFrame(rows)
+    _save(df, '14_cap_sweep')
+    return df
+
+
 # ---------------------------------------------------------------------------
 
 def main():
@@ -572,6 +648,12 @@ def main():
     if want in ('all', 'beta'):
         print('\n=== 11. Market exposure and direction split ===')
         print(stage_beta().round(3).to_string(index=False))
+
+    if want in ('all', 'specs'):
+        print('\n=== 13. Specified indicators (DevLucem + 0.3s inner band) ===')
+        print(stage_specs().round(3).to_string(index=False))
+        print('\n=== 14. Cap sweep: how far from the SMA to stop fading ===')
+        print(stage_cap().round(3).to_string(index=False))
 
     if want in ('all', 'signflip'):
         print('\n=== 12. Sign-flip null (vol clustering preserved) ===')

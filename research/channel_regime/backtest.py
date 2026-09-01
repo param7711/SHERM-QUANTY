@@ -35,8 +35,20 @@ class Params:
     use_tf: bool = True
     max_hold: int = 0       # bars; 0 = no time stop
     stop_sigma: float = 0.0  # adverse move past entry, in sigmas; 0 = no stop
-    trend_trigger: str = 'sma'  # 'sma' (as hypothesised) or 'price'
-    k_trend: float = 0.0    # breakout threshold; 0 = reuse k
+    # 'sma'   : the 20-SMA clears the regression band  (v1 hypothesis)
+    # 'price' : price clears the regression band
+    # 'inner' : price clears the SMA's own inner band at inner_sd stdevs
+    # 'outer' : price clears the SMA's cap band at cap_sd stdevs
+    trend_trigger: str = 'sma'
+    k_trend: float = 0.0    # regression-band breakout threshold; 0 = reuse k
+    inner_sd: float = 0.3   # inner band distance from the SMA, in stdevs
+    cap_sd: float = 0.0     # outer cap distance from the SMA; 0 = no cap
+    cap_blocks_mr: bool = True   # past the cap, stop opening new fades
+    cap_exits_tf: bool = False   # past the cap, take the trend trade off
+    mr_exit: str = 'center'      # 'center' = regression centre line,
+                                 # 'inner'  = back inside the SMA's 0.3 band
+    dev_ddof: int = 0       # 0 = DevLucem's Linear Regression++ (sum/length)
+                            # 2 = textbook n-2; v1's committed CSVs used this
     slope_max: float = 0.0  # gate MR on a flat channel; 0 = no gate
     slope_min_trend: float = 0.0  # gate the trend leg on a steep channel
 
@@ -45,14 +57,18 @@ class Params:
                 f"_x{self.exit_z}_mr{int(self.use_mr)}_tf{int(self.use_tf)}"
                 f"_h{self.max_hold}_s{self.stop_sigma}"
                 f"_trig{self.trend_trigger}_kt{self.k_trend}"
+                f"_in{self.inner_sd}_cap{self.cap_sd}_dd{self.dev_ddof}"
+                f"_x{self.mr_exit}{int(self.cap_exits_tf)}"
                 f"_sl{self.slope_max}_{self.slope_min_trend}")
 
 
 def generate_positions(close: pd.Series, p: Params) -> pd.DataFrame:
     """Target position at each bar's close, plus which leg produced it."""
-    feat = channel_features(close, p.n, p.sma_len)
+    feat = channel_features(close, p.n, p.sma_len,
+                            ddof=p.dev_ddof, inner_sd=p.inner_sd)
     z = feat['z'].to_numpy()
     smaz = feat['smaz'].to_numpy()
+    bbz = feat['bbz'].to_numpy()
     t = len(z)
 
     pos = np.zeros(t)
@@ -61,11 +77,16 @@ def generate_positions(close: pd.Series, p: Params) -> pd.DataFrame:
     entry_z = 0.0
     bars_in = 0
     entry_k = p.entry_frac * p.k
-    k_trend = p.k_trend if p.k_trend > 0 else p.k
-    # 'sma': the 20-SMA has to clear the band, exactly as hypothesised.
-    # 'price': price itself clears the band -- a strictly easier trigger,
-    # used to show what the trend leg does once it can actually fire.
-    trend_metric = smaz if p.trend_trigger == 'sma' else z
+    if p.trend_trigger == 'sma':
+        trend_metric, k_trend = smaz, (p.k_trend if p.k_trend > 0 else p.k)
+    elif p.trend_trigger == 'price':
+        trend_metric, k_trend = z, (p.k_trend if p.k_trend > 0 else p.k)
+    elif p.trend_trigger == 'inner':
+        trend_metric, k_trend = bbz, p.inner_sd
+    elif p.trend_trigger == 'outer':
+        trend_metric, k_trend = bbz, (p.cap_sd if p.cap_sd > 0 else p.inner_sd)
+    else:
+        raise ValueError(f'unknown trend_trigger {p.trend_trigger!r}')
     # Drift of the fitted line across the whole window, in residual sigmas:
     # the channel's own read on how directional the market is.
     tstr = (feat['slope'] * p.n / feat['sigma']).to_numpy()
@@ -76,37 +97,49 @@ def generate_positions(close: pd.Series, p: Params) -> pd.DataFrame:
             state, bars_in = FLAT, 0
             continue
 
+        bi = bbz[i]
+        if not np.isfinite(bi):
+            bi = 0.0
         ti = tstr[i]
         steep_ok_up = p.slope_min_trend <= 0 or ti >= p.slope_min_trend
         steep_ok_dn = p.slope_min_trend <= 0 or ti <= -p.slope_min_trend
         flat_ok = p.slope_max <= 0 or abs(ti) <= p.slope_max
+        # The cap: once price is this far from the SMA, stop opening fades.
+        cap_ok = not (p.cap_blocks_mr and p.cap_sd > 0 and abs(bi) > p.cap_sd)
 
         trend_up = p.use_tf and si > k_trend and steep_ok_up
         trend_dn = p.use_tf and si < -k_trend and steep_ok_dn
 
-        if trend_up:
+        capped_out = p.cap_exits_tf and p.cap_sd > 0 and abs(bi) > p.cap_sd
+
+        if trend_up and not capped_out:
             if state != TF_LONG:
                 state, entry_z, bars_in = TF_LONG, zi, 0
-        elif trend_dn:
+        elif trend_dn and not capped_out:
             if state != TF_SHORT:
                 state, entry_z, bars_in = TF_SHORT, zi, 0
+        elif capped_out and state in (TF_LONG, TF_SHORT):
+            state, bars_in = FLAT, 0
         else:
             # Back inside the channel: any trend position is closed here.
             if state in (TF_LONG, TF_SHORT):
                 state, bars_in = FLAT, 0
 
+            inner_exit = p.mr_exit == 'inner'
             if state == MR_LONG:
                 stop = p.stop_sigma > 0 and zi <= entry_z - p.stop_sigma
                 timed = p.max_hold > 0 and bars_in >= p.max_hold
-                if zi >= p.exit_z or stop or timed:
+                target = bi >= -p.inner_sd if inner_exit else zi >= p.exit_z
+                if target or stop or timed:
                     state, bars_in = FLAT, 0
             elif state == MR_SHORT:
                 stop = p.stop_sigma > 0 and zi >= entry_z + p.stop_sigma
                 timed = p.max_hold > 0 and bars_in >= p.max_hold
-                if zi <= -p.exit_z or stop or timed:
+                target = bi <= p.inner_sd if inner_exit else zi <= -p.exit_z
+                if target or stop or timed:
                     state, bars_in = FLAT, 0
 
-            if state == FLAT and p.use_mr and flat_ok:
+            if state == FLAT and p.use_mr and flat_ok and cap_ok:
                 if zi <= -entry_k:
                     state, entry_z, bars_in = MR_LONG, zi, 0
                 elif zi >= entry_k:
