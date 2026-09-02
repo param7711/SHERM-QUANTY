@@ -587,3 +587,155 @@ Two consequences worth acting on:
    thing: Indian indices continue after a band break. That is a
    *trend-following* setup on the same indicator, and it is the version
    worth testing next — the exact opposite of the fade.
+
+---
+
+## v5 — the band-to-band fade, on the timeframe it was drawn on
+
+The spec changed, and so did the data. This pass tests the strategy exactly
+as specified from the settings panels, on **NSE hourly bars**, because the
+chart is a 1-hour chart and a 20-bar band means a different thing on every
+timeframe.
+
+### The spec
+
+| | |
+|---|---|
+| Bollinger (RegDet+VC) | length 20, SMA basis, source close, **outer 2.1 sd**, **inner 0.3 sd**, offset 0 |
+| Regression channel | **LRC_SH, length 400** |
+| Short | when price touches the **outer upper** band |
+| Cover | when price touches the **inner upper** band |
+| Long | when price touches the **outer lower** band |
+| Sell | when price touches the **inner lower** band |
+| Filter | trade only while the **blue line** is inside the regression channel |
+| Stop | none |
+
+**Which line is blue** is settled from the indicator source, not the screenshot.
+Of the five Bollinger plots exactly one is blue:
+
+```
+BB Upper        #F23645  red          BB Inner Lower  #089981  green, dim
+BB Inner Upper  #F23645  red, dim     BB Lower        #089981  green
+BB Basis        #2962FF  BLUE   <-- the 20-period SMA
+```
+
+So the gate is: *the 20-SMA must lie between the two regression-channel lines.*
+
+**The one number not observed.** LRC_SH exposes only `Length`; its deviation
+multiplier is hard-coded in a script not in evidence. The channel's width *is*
+the gate, so the multiplier is swept from 0.5 to 3.0 everywhere below and
+nothing is fitted to it. At 2.0 the gate is open 87–90% of the time.
+
+### The data, and what was wrong with it
+
+Every market-data host is blocked at the egress proxy, so hourly bars were
+built from 1-minute prints in a public archive
+(`aeron7/nifty-banknifty-intraday-data`), resampled to the NSE session
+(09:15–15:30, seven bars a day, verified at 6.99–7.00 bars/session).
+
+Four separate defects had to be fixed before any number was worth printing:
+
+| Defect | Example | Fix |
+|---|---|---|
+| Foreign prices in the file | BANKNIFTY 2015-06-24 09:15 opens at 18403 with a low of **1439** | drop the whole session |
+| Interleaved adjusted/unadjusted prints | ICICIBANK Jun-2017 alternating between two levels 10% apart | drop sessions with a move undone by the next bar |
+| **A two-year hole** | stock files run 2013-06→2014-06, then nothing until 2016-09 | cut at every calendar gap, keep the longest run |
+| Unadjusted corporate actions | RELIANCE 1:1 Sep-17, TCS 1:1 May-18, INFY 1:1 Sep-18, HDFCBANK 1:2 Sep-19, LT 1:2 Jul-17 | back-adjust to the snapped canonical ratio |
+
+The hole was the dangerous one: a 400-bar regression fitted across it is
+fitted across a two-year move that never appeared on any chart, and splits
+that happened *inside* the hole never show up as a single-day ratio at all.
+Before the fix, BANKNIFTY showed a `long_pnl` of +22.2 — one fake −92%/+1199%
+pair.
+
+**Independent validation.** Cleaned hourly bars, collapsed to daily, against
+the unrelated `eod2` daily feed: price ratios constant to **0.2%** (fixed
+historical scale factors only), daily return correlation **0.983–0.991**,
+median daily difference 14–22 bps — which is the closing-auction gap between
+a 15:29 bar close and the official close. `results/.../29_v5_data_validation.csv`
+
+Final universe: NIFTY (22,777 bars, 2009–2023), BANKNIFTY (22,444, 2010–2023),
+15 large caps (≈10,600 each, 2017–2023).
+
+### Execution
+
+Signal-at-t, fill-at-t+1 throws away the snap-back the strategy exists to
+capture. The reported engine uses **resting limit orders at the bands**: the
+levels for bar *t* are fixed by bars ≤ *t−1*, so an order is already sitting
+there when the bar opens. Fills are taken *at* the level even when the bar
+gapped clean through it, which is the conservative side in all four cases.
+Verified: truncating the series leaves earlier P&L bit-identical, and every
+trade reconciles by hand to (exit level − entry level)/entry level − costs.
+
+### The result
+
+**Nothing works, anywhere, under any setting.**
+
+| | mean Sharpe |
+|---|---|
+| NSE 1h, 17 instruments, 2 bps/side | **−1.34** (0 of 17 positive) |
+| … at zero cost | −1.12 |
+| Parameter surface, 120 configs × 17 instruments | best config **−0.23**; **0 of 120** positive |
+| Stop-loss / time-stop grid, 102 combinations | **0 of 102** positive; stops make it *worse* (−2.36 at 1 sd) |
+| By calendar year | **0 of 14** years positive |
+| Alpha after market beta (Newey-West, 20 lags) | −0.35 to −9.97 t; every instrument negative |
+| Buy-and-hold on the same bars | +0.42 to +1.01 |
+
+The blue-line gate is not the problem — it helps, slightly and consistently
+(+0.03 to +0.10 Sharpe at dev ≥ 1.5, +0.25 at dev 0.5), purely by trading less.
+
+### Where the money goes
+
+The trade shape is the whole story:
+
+```
+win rate        64.7%          <- you are right about two times in three
+average win     +0.67%
+average loss    -1.97%         <- and wrong three times as expensively
+payoff ratio     0.34
+expectancy      -0.26% per trade
+profit factor    0.41   Kelly -0.34   max drawdown -98%
+```
+
+At a 64.7% win rate, break-even needs a payoff ratio of **0.55**. It is 0.34.
+Equivalently: at the payoff ratio you have, you would need to win **74.7%** of
+trades, not 64.7%.
+
+Three Monte Carlo controls locate the cause exactly:
+
+| Control | Result | Reading |
+|---|---|---|
+| **Trade bootstrap** (20k resamples) | p(positive) < 0.01 on 13/17; trade t −0.6 to −9.1 | not luck |
+| **Rotated entry** (200 rotations; same trade count, side mix and exits, only the timing randomised) | real −3.51 vs rotated −3.98 | the bands *do* pick better moments than random, by +0.47 — nowhere near enough |
+| **Synthetic market** (150 block bootstraps; same vol, same tails, serial structure destroyed) | real **−1.34** vs synthetic **−1.41** | the market contributes nothing |
+| **Synthetic, drift removed** | **−1.37** | and it is not "shorting a bull market" either |
+
+The strategy scores the same on real NSE data as on data with every trace of
+structure removed, drift included. **The loss is the payoff geometry, not the
+market.**
+
+That is confirmed independently, without reference to any exit rule, by an
+event study on the entry itself: excess return in the fade direction after a
+band touch, over ~26,000 events per cell, at 5/10/20-bar horizons, with and
+without the gate:
+
+```
+excess  -0.03%  to  +0.08%          t  -0.58  to  +0.15
+7 of 17 instruments positive
+```
+
+There is no predictive content in a band touch on these series at all.
+
+### What this does and does not say
+
+- It does **not** say the indicators are wrong. The gate helps; the band level
+  is worth ~2.2 Sharpe as an *execution* reference versus entering at the same
+  bar's open. Both are real, and both are small.
+- It **does** say that a fixed 1.8-sigma target against an unbounded loss is a
+  losing shape unless the entry is right about three times in four, and this
+  entry is right about two times in three.
+- A breakout mirror is **not** reported here. Negating the position is a clean
+  mirror only for close-to-close P&L (there it flips −0.32 to +0.32 gross, which
+  still does not clear 2.3 bps of cost). With resting orders it is a different
+  strategy needing its own exit rule, and inventing one would be reporting a
+  strategy nobody specified.

@@ -23,3 +23,4 @@ data/research/*.parquet
 
 # Indian market data — regenerated via `python research/channel_regime/data_in.py`
 data/research_in/*.parquet
+data/research_1h/
