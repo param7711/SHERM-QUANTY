@@ -81,13 +81,26 @@ def _raw(sym: str) -> pd.DataFrame:
     return df[df[['open', 'high', 'low', 'close']].gt(0).all(axis=1)]
 
 
-def to_hourly(m: pd.DataFrame) -> pd.DataFrame:
-    """1-minute prints -> hourly bars anchored on the 09:15 session open."""
+OPEN_MIN = 555      # 09:15, the NSE session open
+LATE_MIN = 570      # 09:30, skipping the opening auction and the gap burst
+
+
+def to_hourly(m: pd.DataFrame, anchor: int = OPEN_MIN) -> pd.DataFrame:
+    """1-minute prints -> hourly bars anchored on `anchor` minutes past midnight.
+
+    Anchor 555 (09:15) gives the seven bars TradingView draws.  Anchor 570
+    (09:30) drops the first fifteen minutes of every session outright --
+    the opening auction and the burst of gap-driven prints that follow it
+    -- and leaves six clean bars, 09:30 through 15:29.  That is the only
+    way to express "no trades before 09:30" on hourly bars: the 09:15
+    anchor's first bar runs to 10:14, so blocking it costs a whole hour of
+    tradeable session.
+    """
     mins = m.index.hour * 60 + m.index.minute
-    m = m[(mins >= 555) & (mins <= 929)]                 # 09:15 .. 15:29
-    idx = (m.index.hour * 60 + m.index.minute - 555) // 60
+    m = m[(mins >= anchor) & (mins <= 929)]              # anchor .. 15:29
+    idx = (m.index.hour * 60 + m.index.minute - anchor) // 60
     bucket = (m.index.normalize()
-              + pd.to_timedelta(555 + 60 * idx, unit='m'))
+              + pd.to_timedelta(anchor + 60 * idx, unit='m'))
     g = m.groupby(bucket)
     h = pd.DataFrame({
         'open': g['open'].first(),
@@ -195,6 +208,25 @@ def split_dates(h: pd.DataFrame) -> list:
     return hits
 
 
+def drop_level_breaks(h: pd.DataFrame, tol: float = 0.30, win: int = 11) -> tuple:
+    """Drop whole sessions sitting at a price level their neighbours reject.
+
+    `clean_sessions` compares each bar to its own session's median, so it
+    is blind to a session in which EVERY bar is wrong -- and those exist:
+    BANKNIFTY 2015-06-24 is six consecutive bars around 1440 while the
+    index was trading near 18,400.  A whole foreign day is invisible from
+    the inside; it is only visible against the days on either side.
+
+    Runs after back-adjustment, so a real split has already been removed
+    and any level break left is an error rather than a corporate action.
+    """
+    day = h.index.normalize()
+    daily = h['close'].groupby(day).median()
+    ref = daily.rolling(win, center=True, min_periods=3).median()
+    bad = daily.index[(daily / ref - 1).abs() > tol]
+    return h[~day.isin(bad)], [str(d.date()) for d in bad]
+
+
 def back_adjust(h: pd.DataFrame) -> tuple:
     """Undo unadjusted corporate actions by scaling the pre-event history.
 
@@ -218,15 +250,17 @@ def back_adjust(h: pd.DataFrame) -> tuple:
     return h, applied
 
 
-def build(symbols=None, verbose=True) -> pd.DataFrame:
+def build(symbols=None, verbose=True, anchor: int = OPEN_MIN,
+          out_dir: str = None) -> pd.DataFrame:
     """Raw 1-minute files -> clean, contiguous, split-adjusted hourly bars."""
-    os.makedirs(OUT_DIR, exist_ok=True)
+    out_dir = out_dir or OUT_DIR
+    os.makedirs(out_dir, exist_ok=True)
     rows = []
     for sym in (symbols or SYMBOLS):
         m = _raw(sym)
-        h0 = to_hourly(m)
-        h0.to_parquet(os.path.join(OUT_DIR, f'{sym}.parquet'))
-        h = load(sym)
+        h0 = to_hourly(m, anchor)
+        h0.to_parquet(os.path.join(out_dir, f'{sym}.parquet'))
+        h = load(sym, out_dir=out_dir)
         segs = segments(h0)
         r = {'symbol': sym, 'minute_rows': len(m), 'hourly_raw': len(h0),
              'segments': len(segs), 'hourly_clean': len(h),
@@ -241,27 +275,32 @@ def build(symbols=None, verbose=True) -> pd.DataFrame:
                   f'segs={len(segs)}  {r["start"]}..{r["end"]}  '
                   f'splits={r["splits"]}  max|ret|={r["max_abs_ret"]:.3f}')
     rep = pd.DataFrame(rows)
-    rep.to_csv(os.path.join(OUT_DIR, '_quality.csv'), index=False)
+    rep.to_csv(os.path.join(out_dir, '_quality.csv'), index=False)
     return rep
 
 
-def load(sym: str, adjust: str = 'back') -> pd.DataFrame:
+def load(sym: str, adjust: str = 'back', out_dir: str = None) -> pd.DataFrame:
     """The cleaning pipeline, in the order the problems have to be solved.
 
     1. drop sessions containing a dislocated print (a foreign instrument)
     2. drop sessions whose prices oscillate between two adjusted levels
     3. keep only the longest gap-free stretch of the record
     4. back-adjust the splits that remain inside that stretch
+    5. drop sessions whose whole level is rejected by their neighbours
     """
-    h = pd.read_parquet(os.path.join(OUT_DIR, f'{sym}.parquet'))
+    h = pd.read_parquet(os.path.join(out_dir or OUT_DIR, f'{sym}.parquet'))
     h, _ = clean_sessions(h)
     h, _ = drop_spike_sessions(h)
     h = longest_segment(h)
     if adjust == 'back':
         h, _ = back_adjust(h)
+    h, _ = drop_level_breaks(h)
     return h
 
 
 if __name__ == '__main__':
     import sys
-    print(build(sys.argv[1:] or None).to_string(index=False))
+    a = LATE_MIN if '--late' in sys.argv else OPEN_MIN
+    o = OUT_DIR + '_0930' if '--late' in sys.argv else None
+    syms = [x for x in sys.argv[1:] if not x.startswith('--')] or None
+    print(build(syms, anchor=a, out_dir=o).to_string(index=False))

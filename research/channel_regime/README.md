@@ -808,3 +808,44 @@ re-enter, and the re-entries lose too.
 Winners and losers are opened in the same conditions, at the same volatility, by the
 same rule. The only thing separating them is what the market did next — which is
 precisely what the event study says a band touch cannot predict.
+
+### v6 — FX, and the 09:30 rebuild
+
+**FX (10 pairs, hourly, 2012-11 to 2022-03, 57,600 bars each).** A market with
+no session, no overnight gap and no drift.
+
+| Variant | Sharpe | Positive |
+|---|---|---|
+| Both sides | **−2.814** | 0/10 |
+| Long only | −1.945 | 0/10 |
+| Short only | −2.017 | 0/10 |
+
+Worse than NSE, and the important part is the second and third rows: long-only and
+short-only are within 0.07 of each other. On Indian stocks they were 0.6 apart. That
+settles what the long-only improvement there actually was — **harvesting the equity
+drift, not fixing the strategy.** Fade the bands in a market with no drift and both
+directions lose equally. Payoff 0.30 against 0.61 needed.
+
+**NSE rebuilt from 1-minute prints at a 09:30 anchor** (six bars a session, 09:30
+through 15:29; the opening auction and the gap burst dropped outright). This is the
+only way to express "no trades before 09:30" on hourly bars — the 09:15 anchor's
+first bar runs to 10:14, so blocking it costs a whole hour.
+
+| Variant | Sharpe | Win | Payoff | Needed | Positive |
+|---|---|---|---|---|---|
+| 09:15 bars, both sides | −1.022 | 64.9% | 0.35 | 0.55 | 0/15 |
+| **09:15 bars, long only** | **−0.233** | 67.8% | 0.41 | 0.48 | 5/15 |
+| 09:30 bars, long only | −0.365 | 63.3% | 0.44 | 0.59 | 3/15 |
+
+Avoiding the open makes it worse, and the split says why: the payoff ratio *improves*
+(0.41 → 0.44) while the win rate *falls* (67.8% → 63.3%). The gap-driven touches in
+the first fifteen minutes were among the better trades — an overnight gap that pushes
+price through a band is the one case that reliably snaps back. Cutting them removes
+winners, not losers.
+
+**A third data defect, found by the rebuild.** `clean_sessions` compares each bar to
+its own session's median, so it cannot see a session in which every bar is wrong —
+BANKNIFTY 2015-06-24 is six consecutive bars near 1440 while the index traded near
+18,400. `drop_level_breaks` now checks each session's level against its neighbours'
+rolling median, after back-adjustment so a real split is not mistaken for one. The
+09:15 dataset is unchanged by it, so all earlier figures stand.
