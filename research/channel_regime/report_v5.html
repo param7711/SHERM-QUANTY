@@ -142,7 +142,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;margin-top:12px;
   <p class="standfirst">Short the 2.1&#8239;σ band, cover at 0.3&#8239;σ, only while the blue line sits inside the regression channel, no stop. Tested exactly as specified, on the timeframe it was drawn on. It loses — and the Monte Carlo says the market had nothing to do with it.</p>
   <div class="byline">
     <span>17 instruments</span><span>201,965 hourly bars</span><span>2009–2023</span>
-    <span>11,502 round trips</span><span>limit-order execution</span>
+    <span>6,944 round trips</span><span>limit-order execution</span>
   </div>
 </header>
 
@@ -180,7 +180,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;margin-top:12px;
       <div class="bandrow"><span class="swatch" style="background:#089981"></span><b>BB Lower</b><span>#089981 &nbsp;green &nbsp;— the long trigger</span></div>
     </div>
   </figure>
-  <div class="note"><b>One number I could not observe.</b> LRC_SH exposes only <code>Length</code>; its deviation multiplier is hard-coded in a script I have not seen. That multiplier <em>is</em> the gate, so it is swept from 0.5 to 3.0 in every test and nothing is fitted to it. At 2.0 the gate is open 87–90% of the time. Send me the LRC_SH source and I will pin it exactly.</div>
+  <div class="note"><b>The channel width, recovered from the chart.</b> LRC_SH exposes only <code>Length</code>, so its deviation multiplier had to be measured rather than read. The screenshot's channel spans 1472.2 to 1546.8 around a centre of 1509.5 — a half-width of <b>2.47% of price</b>. A 400-bar regression on RELIANCE hourly bars carries a residual sigma of about <b>3.0%</b> of price, which puts the multiplier near <b>1.0</b>, not the 2.0 default. That matches the chart, where the blue line visibly leaves the channel. Everything below uses 1.0, and the full sweep from 0.5 to 3.0 is negative at every value.</div>
 </section>
 
 <section>
@@ -225,7 +225,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;margin-top:12px;
   <div class="prose">
   <p>A backtest that signals at one bar's close and fills at the next throws away the snap-back this strategy exists to capture, and nobody trading a band system would do that. So the engine uses <strong>resting limit orders at the band levels</strong>: the levels for a bar are fixed by the bars before it, so the order is already sitting there when the bar opens.</p>
   <p>Fills are taken <em>at</em> the level even when the bar gapped clean through it, which is the conservative side in all four cases. Truncating the price series leaves earlier P&amp;L bit-identical, and every trade reconciles by hand to <code>(exit level − entry level) / entry level − costs</code>.</p>
-  <p>Entering at the band rather than at the same bar's open is worth about <strong>+2.2 Sharpe</strong>. That is real, and it is an execution effect, not an edge.</p>
+  <p>Entering at the band rather than at the same bar's open is worth about <strong>+1.6 Sharpe</strong>. That is real, and it is an execution effect, not an edge.</p>
   </div>
 </section>
 
@@ -240,7 +240,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;margin-top:12px;
     </table></div>
   </figure>
   <div class="prose">
-  <p>The gate is not the culprit. It helps — consistently, and slightly: <b>+0.03 to +0.10</b> Sharpe at channel widths of 1.5&#8239;σ and above, <b>+0.25</b> at 0.5&#8239;σ, entirely by trading less. Costs are not the culprit either: at <em>zero</em> cost the mean is still −1.12.</p>
+  <p>The gate is not the culprit. It helps — consistently, and slightly: <b>+0.03 to +0.10</b> Sharpe at channel widths of 1.5&#8239;σ and above, <b>+0.25</b> at 0.5&#8239;σ, entirely by trading less. Costs are not the culprit either: at <em>zero</em> cost the mean is still negative on all 17.</p>
   </div>
 </section>
 
@@ -250,14 +250,14 @@ footer{border-top:1px solid var(--line);padding-top:20px;margin-top:12px;
   <div class="prose">
   <p>This is the whole story, and it is visible in four numbers.</p>
   </div>
-<pre>win rate       64.7%        <span style="color:var(--green)">← right about two trades in three</span>
+<pre>win rate       63.2%        <span style="color:var(--green)">← right about two trades in three</span>
 average win    +0.67%
-average loss   −1.97%       <span style="color:var(--red)">← the losers run three times further</span>
-payoff ratio    0.34
+average loss   −1.94%       <span style="color:var(--red)">← the losers run three times further</span>
+payoff ratio    0.35
 ───────────────────────────────────────────────
-expectancy     −0.26% per trade</pre>
+expectancy     −0.29% per trade</pre>
   <div class="prose">
-  <p>A fixed 1.8&#8239;σ target against a loss with no stop is a shape, and the shape has a break-even line. At a 64.7% win rate you need a payoff ratio of <strong>0.55</strong>. You have 0.34. Put the other way round: at the payoff ratio you actually get, you would need to win <strong>74.7%</strong> of trades, not 64.7%.</p>
+  <p>A fixed 1.8&#8239;σ target against a loss with no stop is a shape, and the shape has a break-even line. At a 63.2% win rate you need a payoff ratio of <strong>0.58</strong>. You have 0.35. Put the other way round: at the payoff ratio you actually get, you would need to win <strong>74.3%</strong> of trades, not 63.2%.</p>
   <p>Every instrument sits below that line, and not marginally.</p>
   </div>
   <figure class="block">
@@ -277,9 +277,9 @@ expectancy     −0.26% per trade</pre>
       <thead><tr><th style="text-align:left">Control</th><th style="text-align:left">What it changes</th><th style="text-align:left">Result</th><th style="text-align:left">Reading</th></tr></thead>
       <tbody>
         <tr><td style="text-align:left">Trade bootstrap<br><span class="dim">20,000 resamples</span></td><td style="text-align:left">the order of the realised trades</td><td style="text-align:left">p(positive) &lt; 0.01 on 13 of 17<br><span class="dim">trade t −0.6 to −9.1</span></td><td style="text-align:left"><b>Not luck.</b></td></tr>
-        <tr><td style="text-align:left">Rotated entry<br><span class="dim">200 rotations</span></td><td style="text-align:left">only <em>when</em> trades fire — count, side mix and exits held fixed</td><td style="text-align:left">real −3.51 vs rotated −3.98</td><td style="text-align:left"><b>The bands do pick better moments</b> than random, by +0.47. Nowhere near enough.</td></tr>
-        <tr><td style="text-align:left">Synthetic market<br><span class="dim">150 block bootstraps</span></td><td style="text-align:left">destroys serial structure; keeps volatility, fat tails, bar shapes</td><td style="text-align:left">real −1.34 vs synthetic −1.41</td><td style="text-align:left"><b>The market contributes nothing.</b></td></tr>
-        <tr class="tot"><td style="text-align:left">…and with drift removed</td><td style="text-align:left">also zeroes the upward drift</td><td style="text-align:left">−1.37</td><td style="text-align:left"><b>Not "shorting a bull market" either.</b></td></tr>
+        <tr><td style="text-align:left">Rotated entry<br><span class="dim">200 rotations</span></td><td style="text-align:left">only <em>when</em> trades fire — count, side mix and exits held fixed</td><td style="text-align:left">real −2.75 vs rotated −3.11</td><td style="text-align:left"><b>The bands do pick better moments</b> than random, by +0.35. Nowhere near enough.</td></tr>
+        <tr><td style="text-align:left">Synthetic market<br><span class="dim">150 block bootstraps</span></td><td style="text-align:left">destroys serial structure; keeps volatility, fat tails, bar shapes</td><td style="text-align:left">real −1.16 vs synthetic −1.13</td><td style="text-align:left"><b>The market contributes nothing.</b></td></tr>
+        <tr class="tot"><td style="text-align:left">…and with drift removed</td><td style="text-align:left">also zeroes the upward drift</td><td style="text-align:left">−1.10</td><td style="text-align:left"><b>Not "shorting a bull market" either.</b></td></tr>
       </tbody>
     </table></div>
   </figure>
@@ -291,8 +291,69 @@ expectancy     −0.26% per trade</pre>
   <div class="pull">The strategy scores the same on real NSE data as on data with every trace of structure removed. Whatever it is reading, it is not the market.</div>
 </section>
 
+
 <section>
-  <div class="eyebrow"><span>07 — The entry, on its own</span><b>no exit rule involved</b></div>
+  <div class="eyebrow"><span>07 — The losing trades</span><b>6,944 round trips, opened up</b></div>
+  <h2>A broad bleed with a vicious tail, not a few disasters</h2>
+  <div class="prose">
+  <p>Two very different strategies produce the same negative Sharpe: one bleeds a little on almost every trade, the other wins steadily and is wrecked by a handful of catastrophes. They need opposite fixes, so this is the first thing to settle.</p>
+  <p>It is neither extreme. The worst 1% of losers carry 7.7% of the damage and the worst 5% carry 24.4% — stable to ±1 point under a 5,000-run bootstrap. You would have to delete <strong>286 trades, 4.1% of the book</strong>, before the total turns positive. That is not an accident you can risk-manage away; it is a systematic one-in-24 event.</p>
+  </div>
+  <figure class="block"><figcaption>Concentration of loss<span>Losers sorted worst first. Gini 0.554.</span></figcaption>
+    <div class="scroll"><table>
+      <thead><tr><th style="text-align:left">Share of losing trades</th><th>Worst 1%</th><th>Worst 5%</th><th>Worst 10%</th><th>Worst 25%</th><th>Worst 50%</th></tr></thead>
+      <tbody><tr><td style="text-align:left">Share of total loss</td><td>7.7%</td><td>24.4%</td><td>38.5%</td><td>64.8%</td><td>87.4%</td></tr></tbody>
+    </table></div>
+  </figure>
+
+  <h3>The single sharpest number in the whole study</h3>
+  <div class="prose"><p>Split every trade by how long it was held:</p></div>
+  <figure class="block">
+    <figcaption>Outcome by holding time<span>If the trade has not worked inside ten bars, it never works.</span></figcaption>
+    <div id="c3"></div>
+  </figure>
+  <div class="prose">
+  <p>Trades that resolve in five bars or less — <strong>44% of the book</strong> — win essentially always and contribute <b class="pos">+22.7</b>. Trades that last past ten bars win <strong>9.4%</strong> of the time and contribute <b class="neg">−47.5</b>. There is no middle.</p>
+  <p>Part of that is definitional: the exit <em>is</em> a target, so a fast exit is a win by construction. The magnitudes are not definitional. A trade held 21–50 bars averages <b class="neg">−4.13%</b>, and the mechanism is plain — the target sits 1.8&#8239;σ away on a moving average that is itself chasing the price. If price does not revert quickly, the target runs away faster than the trade can catch it.</p>
+  </div>
+
+  <h3>Why cutting them does not rescue it</h3>
+  <div class="prose">
+  <p>The obvious response is a stop, or a time limit. Both were tested, and both fail — for a reason worth seeing.</p>
+  <p>Eventual <em>winners</em> go just as far underwater as losers do on the way. A 1% stop catches 34.9% of losers but also kills 14.2% of winners; and a stopped trade still books the stop, it does not book zero. Capping every trade's loss at its best level leaves the book at <b class="neg">−8.5</b> instead of −20.4: better, still losing, and that figure is optimistic because it assumes the stop fills exactly with no slippage.</p>
+  </div>
+  <figure class="block"><figcaption>Stop-loss counterfactual, done honestly<span>A stopped trade books −s, not 0. Book total without any stop: −20.41.</span></figcaption>
+    <div class="scroll"><table>
+      <thead><tr><th>Stop</th><th>Winners killed</th><th>Losers capped</th><th>Book total</th><th>Improvement</th></tr></thead>
+      <tbody>
+        <tr><td>0.50%</td><td>30.7%</td><td>36.7%</td><td class="neg">−8.53</td><td class="pos">+11.88</td></tr>
+        <tr><td>1.00%</td><td>14.2%</td><td>34.9%</td><td class="neg">−12.02</td><td class="pos">+8.39</td></tr>
+        <tr><td>1.50%</td><td>6.3%</td><td>31.3%</td><td class="neg">−14.54</td><td class="pos">+5.87</td></tr>
+        <tr><td>2.00%</td><td>3.2%</td><td>26.1%</td><td class="neg">−16.63</td><td class="pos">+3.78</td></tr>
+        <tr><td>3.00%</td><td>0.8%</td><td>17.5%</td><td class="neg">−18.56</td><td class="pos">+1.85</td></tr>
+      </tbody>
+    </table></div>
+  </figure>
+  <div class="prose"><p>Time limits do worse still. Run through the engine at every cutoff from 3 to 20 bars, all 17 instruments stay negative, and the best setting is <em>no limit at all</em> — cutting early frees the capital to re-enter, and the re-entries lose too.</p></div>
+
+  <h3>The rest of the profile</h3>
+  <figure class="block"><figcaption>Where the losses sit</figcaption>
+    <div class="scroll"><table>
+      <thead><tr><th style="text-align:left">Cut</th><th style="text-align:left">Finding</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left">Side</td><td style="text-align:left">Shorts lose <b class="neg">−15.81</b> against longs' <b class="neg">−4.60</b> on a similar trade count. Average losing short −2.14% vs −1.69% for longs; the ten worst trades in the book are eight shorts.</td></tr>
+        <tr><td style="text-align:left">Session bar</td><td style="text-align:left"><b>42% of all trades fire on the 09:15 bar</b> — the one carrying the overnight gap, met by an order already resting in the market. It accounts for 40.7% of the loss, roughly in proportion, so it is a volume effect rather than a severity one.</td></tr>
+        <tr><td style="text-align:left">Volatility regime</td><td style="text-align:left">Band width at entry is identical for winners and losers (0.60% vs 0.62% of price). Losers are <em>not</em> opened into different conditions — you cannot filter them out by volatility.</td></tr>
+        <tr><td style="text-align:left">Clustering</td><td style="text-align:left">Every one of 14 calendar years is negative. Worst is 2020 at −4.07; the loss scales with trade count, not with any regime.</td></tr>
+        <tr><td style="text-align:left">Tail</td><td style="text-align:left">Trade P&amp;L skew −3.67, kurtosis 26.8. Worst single trade <b class="neg">−31.9%</b> (BHARTIARTL short, 68 bars, Oct 2017); best <b class="pos">+7.3%</b>. Capped upside, open-ended downside.</td></tr>
+      </tbody>
+    </table></div>
+  </figure>
+  <div class="pull">Winners and losers are opened in the same conditions, at the same volatility, by the same rule. The only thing that separates them is what the market did next — which is exactly what the event study says the band cannot predict.</div>
+</section>
+
+<section>
+  <div class="eyebrow"><span>08 — The entry, on its own</span><b>no exit rule involved</b></div>
   <h2>A band touch predicts nothing</h2>
   <div class="prose">
   <p>The Monte Carlo is confirmed independently by a test that ignores the exit rule entirely. Take every bar where price touched an outer band, and measure the return over the next 5, 10 and 20 bars in the direction the fade is betting on, against the instrument's own unconditional drift.</p>
@@ -307,14 +368,14 @@ instruments positive     7 of 17</pre>
 </section>
 
 <section>
-  <div class="eyebrow"><span>08 — What this does and doesn't say</span></div>
+  <div class="eyebrow"><span>09 — What this does and doesn't say</span></div>
   <h2>Reading it honestly</h2>
   <div class="prose">
   <ul>
-    <li><strong>It does not say the indicators are wrong.</strong> The blue-line gate helps. The band level is worth ~2.2 Sharpe as an execution reference. Both are real; both are small.</li>
+    <li><strong>It does not say the indicators are wrong.</strong> The blue-line gate helps. The band level is worth ~1.6 Sharpe as an execution reference. Both are real; both are small.</li>
     <li><strong>It does say the shape loses.</strong> A fixed 1.8&#8239;σ target against an unbounded loss needs an entry that is right roughly three times in four. This entry is right two times in three, and that gap is not closable by tuning.</li>
     <li><strong>The breakout mirror is deliberately not reported.</strong> Negating the position is a clean mirror only for close-to-close P&amp;L — there it flips −0.32 to +0.32 gross, which still does not clear 2.3 bps of cost. With resting orders it is a different strategy needing its own exit rule, and inventing one would mean reporting a strategy nobody specified.</li>
-    <li><strong>Stops were tested anyway</strong>, against the spec, because the loss shape invited it. They make it worse: −2.36 at a 1&#8239;σ stop against −1.34 with none. Your "no stop loss" instinct was the better of the two.</li>
+    <li><strong>Stops were tested anyway</strong>, against the spec, because the loss shape invited it. They make it worse: −2.36 at a 1&#8239;σ stop against −1.16 with none. Your "no stop loss" instinct was the better of the two.</li>
   </ul>
   <h3>Where an edge could actually come from</h3>
   <p>The diagnosis points somewhere specific. The entry needs predictive content it currently has none of — a condition that separates the touches that revert from the touches that run. The gate is the right <em>kind</em> of idea and it is measurably worth something; it is simply far too weak on its own. The next honest test is to find a conditioner with a real t-statistic on that forward return before building any exit around it.</p>
@@ -332,377 +393,309 @@ instruments positive     7 of 17</pre>
 const D = [
  {
   "inst": "RELIANCE",
-  "sharpe": -2.775,
-  "win": 0.5727,
-  "payoff": 0.2986,
-  "pf": 0.4,
-  "exp": -0.006,
-  "kelly": -0.858,
-  "dd": -0.97,
-  "sortino": -2.346,
-  "calmar": -0.449,
-  "trades": 557,
-  "synth": -2.326,
-  "synth_sd": 0.377,
-  "zd": -2.26,
-  "lo": -1.363,
-  "so": -2.477,
-  "rot": -4.289,
-  "realopen": -4.539,
-  "at": -6.34,
+  "sharpe": -2.388,
+  "win": 0.5785,
+  "payoff": 0.2878,
+  "pf": 0.395,
+  "exp": -0.00608,
+  "kelly": -0.886,
+  "dd": -0.885,
+  "sortino": -1.758,
+  "calmar": -0.336,
+  "trades": 344,
+  "synth": -1.882,
+  "synth_sd": 0.365,
+  "zd": -1.882,
+  "at": -5.53,
   "bh": 1.012
  },
  {
   "inst": "NIFTY",
-  "sharpe": -2.639,
-  "win": 0.5575,
-  "payoff": 0.3248,
-  "pf": 0.409,
-  "exp": -0.00322,
-  "kelly": -0.805,
-  "dd": -0.979,
-  "sortino": -2.391,
-  "calmar": -0.26,
-  "trades": 1173,
-  "synth": -2.575,
-  "synth_sd": 0.231,
-  "zd": -2.59,
-  "lo": -1.262,
-  "so": -2.471,
-  "rot": -4.389,
-  "realopen": -4.113,
-  "at": -9.97,
+  "sharpe": -2.379,
+  "win": 0.5286,
+  "payoff": 0.3203,
+  "pf": 0.359,
+  "exp": -0.00388,
+  "kelly": -0.943,
+  "dd": -0.928,
+  "sortino": -1.686,
+  "calmar": -0.195,
+  "trades": 664,
+  "synth": -2.066,
+  "synth_sd": 0.22,
+  "zd": -2.066,
+  "at": -8.76,
   "bh": 0.673
  },
  {
   "inst": "BANKNIFTY",
-  "sharpe": -2.39,
-  "win": 0.5868,
-  "payoff": 0.3074,
-  "pf": 0.437,
-  "exp": -0.00432,
-  "kelly": -0.757,
-  "dd": -0.995,
-  "sortino": -2.041,
-  "calmar": -0.334,
-  "trades": 1164,
-  "synth": -2.438,
-  "synth_sd": 0.238,
-  "zd": -2.442,
-  "lo": -1.091,
-  "so": -2.286,
-  "rot": -4.151,
-  "realopen": -3.945,
-  "at": -8.64,
+  "sharpe": -2.059,
+  "win": 0.5631,
+  "payoff": 0.3089,
+  "pf": 0.398,
+  "exp": -0.00485,
+  "kelly": -0.851,
+  "dd": -0.968,
+  "sortino": -1.389,
+  "calmar": -0.242,
+  "trades": 689,
+  "synth": -1.946,
+  "synth_sd": 0.229,
+  "zd": -1.946,
+  "at": -7.62,
   "bh": 0.621
  },
  {
   "inst": "MARUTI",
-  "sharpe": -1.762,
-  "win": 0.672,
-  "payoff": 0.2762,
-  "pf": 0.566,
-  "exp": -0.00339,
-  "kelly": -0.516,
-  "dd": -0.899,
-  "sortino": -1.476,
-  "calmar": -0.341,
-  "trades": 628,
-  "synth": -1.642,
-  "synth_sd": 0.371,
-  "zd": -1.69,
-  "lo": -0.746,
-  "so": -1.747,
-  "rot": -4.072,
-  "realopen": -4.064,
-  "at": -4.27,
+  "sharpe": -1.722,
+  "win": 0.645,
+  "payoff": 0.2727,
+  "pf": 0.495,
+  "exp": -0.0044,
+  "kelly": -0.657,
+  "dd": -0.826,
+  "sortino": -1.167,
+  "calmar": -0.292,
+  "trades": 369,
+  "synth": -1.324,
+  "synth_sd": 0.369,
+  "zd": -1.324,
+  "at": -4.12,
   "bh": 0.432
  },
  {
-  "inst": "BAJFINANCE",
-  "sharpe": -1.644,
-  "win": 0.6429,
-  "payoff": 0.3071,
-  "pf": 0.553,
-  "exp": -0.0042,
-  "kelly": -0.52,
-  "dd": -0.908,
-  "sortino": -1.34,
-  "calmar": -0.391,
-  "trades": 546,
-  "synth": -1.895,
-  "synth_sd": 0.341,
-  "zd": -1.837,
-  "lo": -0.41,
-  "so": -1.817,
-  "rot": -3.894,
-  "realopen": -3.909,
-  "at": -3.8,
-  "bh": 0.802
- },
- {
   "inst": "SBIN",
-  "sharpe": -1.63,
-  "win": 0.5978,
-  "payoff": 0.3608,
-  "pf": 0.536,
-  "exp": -0.00432,
-  "kelly": -0.517,
-  "dd": -0.922,
-  "sortino": -1.239,
-  "calmar": -0.367,
-  "trades": 547,
-  "synth": -1.555,
-  "synth_sd": 0.358,
-  "zd": -1.615,
-  "lo": -0.783,
-  "so": -1.437,
-  "rot": -3.796,
-  "realopen": -3.647,
-  "at": -4.26,
+  "sharpe": -1.615,
+  "win": 0.5484,
+  "payoff": 0.3705,
+  "pf": 0.45,
+  "exp": -0.00586,
+  "kelly": -0.67,
+  "dd": -0.854,
+  "sortino": -0.953,
+  "calmar": -0.314,
+  "trades": 310,
+  "synth": -1.225,
+  "synth_sd": 0.344,
+  "zd": -1.225,
+  "at": -4.08,
   "bh": 0.541
  },
  {
   "inst": "ITC",
-  "sharpe": -1.587,
-  "win": 0.6465,
-  "payoff": 0.3014,
-  "pf": 0.551,
-  "exp": -0.00293,
-  "kelly": -0.526,
-  "dd": -0.861,
-  "sortino": -1.214,
-  "calmar": -0.311,
-  "trades": 611,
-  "synth": -1.306,
-  "synth_sd": 0.373,
-  "zd": -1.246,
-  "lo": -0.86,
-  "so": -1.249,
-  "rot": -3.911,
-  "realopen": -3.756,
-  "at": -3.95,
+  "sharpe": -1.264,
+  "win": 0.6599,
+  "payoff": 0.2876,
+  "pf": 0.558,
+  "exp": -0.00303,
+  "kelly": -0.523,
+  "dd": -0.737,
+  "sortino": -0.754,
+  "calmar": -0.253,
+  "trades": 394,
+  "synth": -1.04,
+  "synth_sd": 0.368,
+  "zd": -1.04,
+  "at": -3.03,
   "bh": 0.423
  },
  {
-  "inst": "TCS",
-  "sharpe": -1.283,
-  "win": 0.6343,
-  "payoff": 0.3767,
-  "pf": 0.653,
-  "exp": -0.00211,
-  "kelly": -0.336,
-  "dd": -0.771,
-  "sortino": -1.09,
-  "calmar": -0.269,
-  "trades": 629,
-  "synth": -1.287,
-  "synth_sd": 0.382,
-  "zd": -1.208,
-  "lo": -0.517,
-  "so": -1.231,
-  "rot": -4.246,
-  "realopen": -3.425,
-  "at": -3.12,
-  "bh": 0.833
- },
- {
-  "inst": "INFY",
-  "sharpe": -1.185,
-  "win": 0.6566,
-  "payoff": 0.3476,
-  "pf": 0.665,
-  "exp": -0.0021,
-  "kelly": -0.331,
-  "dd": -0.784,
-  "sortino": -0.897,
-  "calmar": -0.276,
-  "trades": 632,
-  "synth": -1.469,
-  "synth_sd": 0.351,
-  "zd": -1.314,
-  "lo": -0.406,
-  "so": -1.203,
-  "rot": -4.057,
-  "realopen": -3.13,
-  "at": -2.83,
-  "bh": 0.797
- },
- {
-  "inst": "LT",
-  "sharpe": -1.179,
-  "win": 0.6637,
-  "payoff": 0.33,
-  "pf": 0.651,
-  "exp": -0.00227,
-  "kelly": -0.355,
-  "dd": -0.762,
-  "sortino": -0.939,
-  "calmar": -0.284,
-  "trades": 559,
-  "synth": -1.254,
-  "synth_sd": 0.433,
-  "zd": -1.294,
-  "lo": -0.336,
-  "so": -1.268,
-  "rot": -3.883,
-  "realopen": -3.482,
-  "at": -2.97,
-  "bh": 0.521
- },
- {
   "inst": "HDFCBANK",
-  "sharpe": -1.069,
-  "win": 0.6667,
-  "payoff": 0.3394,
-  "pf": 0.679,
-  "exp": -0.00186,
-  "kelly": -0.315,
-  "dd": -0.72,
-  "sortino": -0.837,
-  "calmar": -0.254,
-  "trades": 621,
-  "synth": -1.406,
-  "synth_sd": 0.31,
-  "zd": -1.426,
-  "lo": -0.042,
-  "so": -1.26,
-  "rot": -3.791,
-  "realopen": -3.062,
-  "at": -2.52,
+  "sharpe": -1.181,
+  "win": 0.6594,
+  "payoff": 0.3051,
+  "pf": 0.591,
+  "exp": -0.00259,
+  "kelly": -0.457,
+  "dd": -0.683,
+  "sortino": -0.743,
+  "calmar": -0.246,
+  "trades": 414,
+  "synth": -1.133,
+  "synth_sd": 0.314,
+  "zd": -1.133,
+  "at": -2.85,
   "bh": 0.774
  },
  {
-  "inst": "AXISBANK",
-  "sharpe": -0.896,
-  "win": 0.6587,
-  "payoff": 0.3744,
-  "pf": 0.722,
-  "exp": -0.00199,
-  "kelly": -0.253,
-  "dd": -0.781,
-  "sortino": -0.782,
-  "calmar": -0.262,
-  "trades": 627,
-  "synth": -1.319,
-  "synth_sd": 0.321,
-  "zd": -1.238,
-  "lo": -0.185,
-  "so": -0.98,
-  "rot": -3.758,
-  "realopen": -3.194,
-  "at": -2.46,
-  "bh": 0.476
+  "inst": "TCS",
+  "sharpe": -1.175,
+  "win": 0.6199,
+  "payoff": 0.3683,
+  "pf": 0.601,
+  "exp": -0.00274,
+  "kelly": -0.412,
+  "dd": -0.665,
+  "sortino": -0.794,
+  "calmar": -0.225,
+  "trades": 342,
+  "synth": -1.047,
+  "synth_sd": 0.42,
+  "zd": -1.047,
+  "at": -2.73,
+  "bh": 0.833
+ },
+ {
+  "inst": "BAJFINANCE",
+  "sharpe": -1.143,
+  "win": 0.6109,
+  "payoff": 0.3724,
+  "pf": 0.585,
+  "exp": -0.00369,
+  "kelly": -0.434,
+  "dd": -0.7,
+  "sortino": -0.776,
+  "calmar": -0.281,
+  "trades": 311,
+  "synth": -1.513,
+  "synth_sd": 0.355,
+  "zd": -1.513,
+  "at": -2.74,
+  "bh": 0.802
  },
  {
   "inst": "ICICIBANK",
-  "sharpe": -0.854,
-  "win": 0.6541,
-  "payoff": 0.3876,
-  "pf": 0.733,
-  "exp": -0.00193,
-  "kelly": -0.238,
-  "dd": -0.712,
-  "sortino": -0.684,
-  "calmar": -0.269,
-  "trades": 555,
-  "synth": -1.251,
-  "synth_sd": 0.345,
-  "zd": -1.201,
-  "lo": 0.049,
-  "so": -1.152,
-  "rot": -3.629,
-  "realopen": -2.607,
-  "at": -2.15,
+  "sharpe": -0.872,
+  "win": 0.6556,
+  "payoff": 0.348,
+  "pf": 0.662,
+  "exp": -0.00256,
+  "kelly": -0.334,
+  "dd": -0.619,
+  "sortino": -0.556,
+  "calmar": -0.246,
+  "trades": 331,
+  "synth": -0.972,
+  "synth_sd": 0.343,
+  "zd": -0.972,
+  "at": -2.31,
   "bh": 0.734
  },
  {
   "inst": "ASIANPAINT",
-  "sharpe": -0.755,
-  "win": 0.7025,
-  "payoff": 0.3326,
-  "pf": 0.785,
-  "exp": -0.00127,
-  "kelly": -0.192,
-  "dd": -0.716,
-  "sortino": -0.608,
-  "calmar": -0.206,
-  "trades": 669,
-  "synth": -0.811,
-  "synth_sd": 0.357,
-  "zd": -0.692,
-  "lo": -0.29,
-  "so": -0.735,
-  "rot": -4.078,
-  "realopen": -3.366,
-  "at": -1.88,
+  "sharpe": -0.736,
+  "win": 0.6933,
+  "payoff": 0.3241,
+  "pf": 0.733,
+  "exp": -0.00173,
+  "kelly": -0.253,
+  "dd": -0.607,
+  "sortino": -0.46,
+  "calmar": -0.193,
+  "trades": 388,
+  "synth": -0.634,
+  "synth_sd": 0.369,
+  "zd": -0.634,
+  "at": -2.06,
   "bh": 0.856
  },
  {
-  "inst": "KOTAKBANK",
-  "sharpe": -0.509,
-  "win": 0.6828,
-  "payoff": 0.3864,
-  "pf": 0.832,
-  "exp": -0.00097,
-  "kelly": -0.138,
-  "dd": -0.606,
-  "sortino": -0.406,
-  "calmar": -0.188,
-  "trades": 640,
-  "synth": -0.812,
-  "synth_sd": 0.361,
-  "zd": -0.711,
-  "lo": -0.105,
-  "so": -0.597,
-  "rot": -3.758,
-  "realopen": -3.048,
-  "at": -1.36,
-  "bh": 0.661
+  "inst": "AXISBANK",
+  "sharpe": -0.731,
+  "win": 0.6691,
+  "payoff": 0.3534,
+  "pf": 0.714,
+  "exp": -0.00201,
+  "kelly": -0.267,
+  "dd": -0.682,
+  "sortino": -0.504,
+  "calmar": -0.21,
+  "trades": 417,
+  "synth": -1.081,
+  "synth_sd": 0.333,
+  "zd": -1.081,
+  "at": -2.01,
+  "bh": 0.476
  },
  {
-  "inst": "BHARTIARTL",
-  "sharpe": -0.367,
-  "win": 0.6969,
-  "payoff": 0.3807,
-  "pf": 0.875,
-  "exp": -0.00083,
-  "kelly": -0.099,
-  "dd": -0.661,
-  "sortino": -0.302,
-  "calmar": -0.158,
-  "trades": 673,
-  "synth": -0.246,
-  "synth_sd": 0.33,
-  "zd": -0.28,
-  "lo": 0.396,
-  "so": -0.858,
-  "rot": -3.947,
-  "realopen": -3.132,
-  "at": -0.88,
-  "bh": 0.609
+  "inst": "LT",
+  "sharpe": -0.69,
+  "win": 0.6725,
+  "payoff": 0.3526,
+  "pf": 0.724,
+  "exp": -0.00168,
+  "kelly": -0.256,
+  "dd": -0.5,
+  "sortino": -0.43,
+  "calmar": -0.211,
+  "trades": 342,
+  "synth": -0.997,
+  "synth_sd": 0.42,
+  "zd": -0.997,
+  "at": -1.63,
+  "bh": 0.521
  },
  {
   "inst": "HINDUNILVR",
-  "sharpe": -0.236,
-  "win": 0.7049,
-  "payoff": 0.3873,
-  "pf": 0.925,
-  "exp": -0.00034,
-  "kelly": -0.057,
-  "dd": -0.436,
-  "sortino": -0.202,
-  "calmar": -0.11,
-  "trades": 671,
-  "synth": -0.367,
-  "synth_sd": 0.359,
-  "zd": -0.311,
-  "lo": 0.268,
-  "so": -0.454,
-  "rot": -3.921,
-  "realopen": -3.21,
-  "at": -0.35,
+  "sharpe": -0.56,
+  "win": 0.6929,
+  "payoff": 0.3499,
+  "pf": 0.789,
+  "exp": -0.00115,
+  "kelly": -0.185,
+  "dd": -0.52,
+  "sortino": -0.372,
+  "calmar": -0.146,
+  "trades": 381,
+  "synth": -0.307,
+  "synth_sd": 0.345,
+  "zd": -0.307,
+  "at": -1.19,
   "bh": 0.899
+ },
+ {
+  "inst": "INFY",
+  "sharpe": -0.504,
+  "win": 0.66,
+  "payoff": 0.4259,
+  "pf": 0.827,
+  "exp": -0.00094,
+  "kelly": -0.138,
+  "dd": -0.468,
+  "sortino": -0.345,
+  "calmar": -0.16,
+  "trades": 403,
+  "synth": -1.185,
+  "synth_sd": 0.325,
+  "zd": -1.185,
+  "at": -1.26,
+  "bh": 0.797
+ },
+ {
+  "inst": "BHARTIARTL",
+  "sharpe": -0.504,
+  "win": 0.6825,
+  "payoff": 0.3727,
+  "pf": 0.801,
+  "exp": -0.00146,
+  "kelly": -0.17,
+  "dd": -0.614,
+  "sortino": -0.346,
+  "calmar": -0.167,
+  "trades": 422,
+  "synth": -0.21,
+  "synth_sd": 0.353,
+  "zd": -0.21,
+  "at": -1.18,
+  "bh": 0.609
+ },
+ {
+  "inst": "KOTAKBANK",
+  "sharpe": -0.245,
+  "win": 0.6903,
+  "payoff": 0.399,
+  "pf": 0.889,
+  "exp": -0.00058,
+  "kelly": -0.086,
+  "dd": -0.359,
+  "sortino": -0.156,
+  "calmar": -0.139,
+  "trades": 423,
+  "synth": -0.697,
+  "synth_sd": 0.373,
+  "zd": -0.697,
+  "at": -0.66,
+  "bh": 0.661
  }
 ];
 const tip = document.getElementById('tip');
@@ -860,5 +853,62 @@ const el = (n, a, p) => { const e = document.createElementNS(NS, n);
     'font-family': 'var(--display)', 'font-size': 12, 'font-weight': 600,
     'letter-spacing': '.08em' }, s).textContent = 'REAL − SYNTH';
   document.getElementById('c2').appendChild(s);
+})();
+
+/* ---- chart 3: outcome by holding time ---- */
+(function () {
+  const B = [
+    { k: '1–2 bars',   n: 1562, win: 1.000, tot:  12.24 },
+    { k: '3–5 bars',   n: 1471, win: 0.989, tot:  10.46 },
+    { k: '6–10 bars',  n: 1657, win: 0.735, tot:   4.40 },
+    { k: '11–20 bars', n: 1601, win: 0.094, tot: -19.43 },
+    { k: '21–50 bars', n:  637, win: 0.000, tot: -26.30 },
+    { k: '50+ bars',   n:   16, win: 0.000, tot:  -1.79 }];
+  const W = 1000, rh = 62, m = { t: 46, r: 40, b: 52, l: 108 };
+  const H = m.t + m.b + B.length * rh;
+  const lo = -28, hi = 14;
+  const X = v => m.l + (v - lo) / (hi - lo) * (W - m.l - m.r);
+  const s = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img',
+    'aria-label': 'Total profit and loss by holding-time bucket' });
+  for (let v = -25; v <= 10; v += 5) {
+    el('line', { x1: X(v), x2: X(v), y1: m.t - 16, y2: H - m.b + 2,
+      stroke: v === 0 ? 'var(--line)' : 'var(--hair)', 'stroke-width': v === 0 ? 1.5 : 1 }, s);
+    el('text', { x: X(v), y: H - m.b + 22, 'text-anchor': 'middle', fill: 'var(--muted)',
+      'font-family': 'var(--mono)', 'font-size': 12.5 }, s).textContent = v;
+  }
+  el('text', { x: (m.l + W - m.r) / 2, y: H - 12, 'text-anchor': 'middle', fill: 'var(--ink2)',
+    'font-family': 'var(--display)', 'font-size': 14, 'font-weight': 600 }, s)
+    .textContent = 'Total P&L contributed  (sum of trade returns)';
+  el('text', { x: m.l, y: m.t - 26, fill: 'var(--faint)', 'font-family': 'var(--display)',
+    'font-size': 12, 'font-weight': 600, 'letter-spacing': '.08em' }, s)
+    .textContent = 'HOLDING TIME';
+  B.forEach((d, i) => {
+    const y = m.t + i * rh, bh = 26;
+    const g = el('g', {}, s);
+    el('rect', { x: 0, y: y - 6, width: W, height: rh, fill: 'transparent' }, g);
+    el('text', { x: m.l - 14, y: y + bh / 2 + 4, 'text-anchor': 'end', fill: 'var(--ink)',
+      'font-family': 'var(--mono)', 'font-size': 13 }, g).textContent = d.k;
+    const x0 = X(Math.min(0, d.tot)), x1 = X(Math.max(0, d.tot));
+    el('rect', { x: x0, y, width: Math.max(x1 - x0, 2), height: bh, rx: 3,
+      fill: d.tot >= 0 ? 'var(--green)' : 'var(--red)' }, g);
+    // a long negative bar leaves no room outside it, so the value moves inside
+    const inside = d.tot < 0 && x0 - 10 < m.l + 6;
+    el('text', { x: inside ? x0 + 10 : (d.tot >= 0 ? x1 + 10 : x0 - 10),
+      y: y + bh / 2 + 4,
+      'text-anchor': inside ? 'start' : (d.tot >= 0 ? 'start' : 'end'),
+      fill: inside ? '#fff' : 'var(--ink)',
+      'font-family': 'var(--mono)', 'font-size': 13, 'font-weight': 500 }, g)
+      .textContent = f(d.tot, 1);
+    el('text', { x: m.l + 8, y: y + bh + 17, fill: 'var(--muted)',
+      'font-family': 'var(--mono)', 'font-size': 11.5 }, g)
+      .textContent = `${d.n} trades · ${(d.win * 100).toFixed(1)}% won`;
+    g.style.cursor = 'crosshair';
+    g.addEventListener('mousemove', e => show(e,
+      `<b>${d.k}</b><br>trades &nbsp;&nbsp;&nbsp;${d.n} (${(d.n / 6944 * 100).toFixed(0)}% of book)<br>` +
+      `win rate &nbsp;${(d.win * 100).toFixed(1)}%<br>total &nbsp;&nbsp;&nbsp;&nbsp;${f(d.tot, 2)}<br>` +
+      `per trade ${f(d.tot / d.n * 100, 2)}%`));
+    g.addEventListener('mouseleave', hide);
+  });
+  document.getElementById('c3').appendChild(s);
 })();
 </script>

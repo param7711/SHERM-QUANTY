@@ -739,3 +739,72 @@ There is no predictive content in a band touch on these series at all.
   still does not clear 2.3 bps of cost). With resting orders it is a different
   strategy needing its own exit rule, and inventing one would be reporting a
   strategy nobody specified.
+
+### v5b — the channel width, and the anatomy of the losing trades
+
+**LRC_SH is DevLucem's, with the deviation recovered from the chart.** The panel
+exposes only `Length`. The screenshot's channel spans 1472.2–1546.8 about a centre
+of 1509.5 — a half-width of **2.47% of price**. A 400-bar regression on RELIANCE
+hourly carries a residual sigma of ~3.0% of price, putting the multiplier near
+**1.0**, not the 2.0 default, which matches a chart where the blue line visibly
+leaves the channel. At 1.0 the gate is open ~50% of bars instead of ~90%. Headline
+figures are now quoted there: mean Sharpe **−1.163**, still 0 of 17, and the whole
+0.5–3.0 sweep stays negative.
+
+**Is the loss concentrated?** Neither extreme — a broad bleed with a vicious tail.
+
+```
+worst  1% of losers ->  7.7% of total loss     Gini 0.554
+worst  5%           -> 24.4%   (bootstrap 23.2-25.5%)
+worst 10%           -> 38.5%
+worst 25%           -> 64.8%
+must delete 286 trades (4.1% of the book) before the total turns positive
+```
+
+**Outcome by holding time — the sharpest split in the study.**
+
+| Held | Trades | Won | Total P&L |
+|---|---|---|---|
+| 1–2 bars | 1,562 | 100.0% | +12.24 |
+| 3–5 bars | 1,471 | 98.9% | +10.46 |
+| 6–10 bars | 1,657 | 73.5% | +4.40 |
+| **11–20 bars** | 1,601 | **9.4%** | **−19.43** |
+| **21–50 bars** | 637 | **0.0%** | **−26.30** |
+| 50+ bars | 16 | 0.0% | −1.79 |
+
+If the trade has not worked inside ten bars it never works. Part of that is
+definitional — the exit is a target, so a fast exit is a win by construction — but
+the magnitudes are not: a 21–50 bar trade averages −4.13%. The target sits 1.8 sd
+away on a moving average that is itself chasing price, so a trade that does not
+revert quickly watches its own target run away.
+
+**Why cutting them does not rescue it.** Eventual winners go as far underwater as
+losers do, and a stopped trade books the stop rather than zero:
+
+| Stop | Winners killed | Losers capped | Book total | vs −20.41 |
+|---|---|---|---|---|
+| 0.50% | 30.7% | 36.7% | −8.53 | +11.88 |
+| 1.00% | 14.2% | 34.9% | −12.02 | +8.39 |
+| 2.00% | 3.2% | 26.1% | −16.63 | +3.78 |
+
+The best case still loses, and it is optimistic (no slippage). Time limits do worse:
+run through the engine at 3, 5, 8, 10, 15 and 20 bars, all 17 instruments stay
+negative and the best setting is no limit at all — cutting early frees capital to
+re-enter, and the re-entries lose too.
+
+**The rest of the profile.**
+
+- **Side.** Shorts lose −15.81 against longs' −4.60 on a similar count; eight of the
+  ten worst trades are shorts. Worst single trade −31.9% (BHARTIARTL short, 68 bars).
+- **Session bar.** 42% of all trades fire on the 09:15 bar — the one carrying the
+  overnight gap, met by an order already resting in the market. It takes 40.7% of
+  the loss, so it is a volume effect, not a severity one.
+- **Volatility.** Band width at entry is the same for winners and losers (0.60% vs
+  0.62% of price). Losers are not opened into different conditions, so no volatility
+  filter separates them.
+- **Clustering.** All 14 calendar years negative; worst 2020 at −4.07.
+- **Tail.** Trade P&L skew −3.67, kurtosis 26.8. Capped upside, open-ended downside.
+
+Winners and losers are opened in the same conditions, at the same volatility, by the
+same rule. The only thing separating them is what the market did next — which is
+precisely what the event study says a band touch cannot predict.

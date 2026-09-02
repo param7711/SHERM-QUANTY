@@ -375,6 +375,9 @@ def simulate_limit(df: pd.DataFrame, p: FadeParams) -> pd.DataFrame:
                 r = cur * (tgt - prev) / prev - fee
                 trades.append({'entry': df.index[entry_i], 'exit': df.index[i],
                                'side': cur, 'bars': i - entry_i,
+                               'entry_px': entry_px, 'exit_px': tgt,
+                               'entry_i': entry_i, 'exit_i': i,
+                               'sd_pct': SD[entry_i] / entry_px,
                                'pnl': cur * (tgt - entry_px) / entry_px - 2 * fee})
                 cur = 0.0
             else:
