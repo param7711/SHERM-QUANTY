@@ -76,6 +76,7 @@ class FadeParams:
     reverse: bool = False        # trade the break instead of the fade
     long_only: bool = False
     short_only: bool = False
+    min_entry_hour: int = 0       # 0 = any bar; 10 = skip the 09:15 opening bar
     stop_sigma: float = 0.0       # 0 = the spec: no stop loss
     max_hold: int = 0             # 0 = no time stop
     lag: int = 1
@@ -334,6 +335,11 @@ def simulate_limit(df: pd.DataFrame, p: FadeParams) -> pd.DataFrame:
     SD = b['sd'].to_numpy()
     IU, ID = b['inner_up'].to_numpy(), b['inner_dn'].to_numpy()
     ok = np.isfinite(U) & np.isfinite(L) & np.isfinite(IU) & np.isfinite(ID)
+    # "no trades before 09:30": on hourly bars the opening bar spans 09:15-10:14,
+    # so the earliest bar that can be excluded wholesale is that one. Entries are
+    # blocked on it; an open position is still managed and exited normally.
+    can_open = (np.ones(len(df), bool) if not p.min_entry_hour
+                else np.asarray(df.index.hour >= p.min_entry_hour))
 
     n = len(df)
     ret = np.zeros(n)
@@ -349,9 +355,9 @@ def simulate_limit(df: pd.DataFrame, p: FadeParams) -> pd.DataFrame:
         r = 0.0
         if cur == 0.0:
             side, fill = 0.0, np.nan
-            if gate[i] and l[i] <= L[i] and not p.short_only:
+            if gate[i] and can_open[i] and l[i] <= L[i] and not p.short_only:
                 side, fill = 1.0, L[i]
-            elif gate[i] and h[i] >= U[i] and not p.long_only:
+            elif gate[i] and can_open[i] and h[i] >= U[i] and not p.long_only:
                 side, fill = -1.0, U[i]
             if side != 0.0:
                 r = side * (c[i] - fill) / fill - fee
