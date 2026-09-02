@@ -1,0 +1,864 @@
+<title>The Band Fade Post-Mortem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --blue:#2962FF; --amber:#C77800; --red:#F23645; --green:#089981;
+  --ink:#0F1520; --ink2:#39435A; --muted:#5C6880; --faint:#8A94A8;
+  --surface:#FFFFFF; --ground:#EDF0F5; --panel:#F6F8FB;
+  --line:#D5DBE6; --hair:#E4E9F1;
+  --shade:rgba(242,54,69,.07);
+  --display:"IBM Plex Sans Condensed",-apple-system,"Segoe UI",sans-serif;
+  --body:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  --w:1080px; --prose:65ch;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --blue:#5B8CFF; --amber:#E39A2B; --red:#FF5C6B; --green:#22B893;
+  --ink:#E4E9F2; --ink2:#B6C0D2; --muted:#8B97AC; --faint:#6B7789;
+  --surface:#121822; --ground:#0A0E15; --panel:#161D28;
+  --line:#293346; --hair:#1E2733; --shade:rgba(255,92,107,.10);
+}}
+:root[data-theme="dark"]{
+  --blue:#5B8CFF; --amber:#E39A2B; --red:#FF5C6B; --green:#22B893;
+  --ink:#E4E9F2; --ink2:#B6C0D2; --muted:#8B97AC; --faint:#6B7789;
+  --surface:#121822; --ground:#0A0E15; --panel:#161D28;
+  --line:#293346; --hair:#1E2733; --shade:rgba(255,92,107,.10);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);
+  font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased;margin:0}
+.wrap{max-width:var(--w);margin:0 auto;padding:0 24px 96px}
+.prose{max-width:var(--prose)}
+p{margin:0 0 1.05em}
+a{color:var(--blue)}
+strong{font-weight:600}
+em{font-style:italic}
+
+/* ---------- masthead ---------- */
+header{border-bottom:2px solid var(--ink);padding:44px 0 20px;margin-bottom:38px}
+.kicker{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--blue);margin-bottom:14px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(38px,6.4vw,66px);
+  line-height:.98;letter-spacing:-.02em;margin:0 0 16px;text-wrap:balance}
+.standfirst{font-size:20px;line-height:1.5;color:var(--ink2);max-width:60ch;margin:0 0 22px}
+.byline{font-family:var(--mono);font-size:12px;color:var(--faint);
+  display:flex;flex-wrap:wrap;gap:6px 20px;padding-top:14px;border-top:1px solid var(--hair)}
+
+/* ---------- verdict strip ---------- */
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);margin:0 0 44px}
+.vc{background:var(--surface);padding:16px 18px 18px}
+.vc dt{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:8px;min-height:2.6em}
+.vc dd{margin:0;font-family:var(--mono);font-size:26px;font-weight:600;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--red)}
+.vc dd.n{color:var(--ink)}
+.vc small{display:block;font-family:var(--body);font-size:13px;color:var(--muted);
+  margin-top:5px;line-height:1.35}
+
+/* ---------- sections ---------- */
+section{margin:0 0 54px;scroll-margin-top:20px}
+.eyebrow{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted);padding-bottom:7px;
+  border-bottom:1px solid var(--line);margin-bottom:22px;display:flex;
+  justify-content:space-between;align-items:baseline;gap:16px}
+.eyebrow b{color:var(--blue);font-weight:600}
+h2{font-family:var(--display);font-weight:700;font-size:clamp(25px,3.2vw,33px);
+  line-height:1.1;letter-spacing:-.012em;margin:0 0 14px;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:.005em;
+  margin:30px 0 10px}
+
+/* ---------- data blocks ---------- */
+.block{background:var(--surface);border:1px solid var(--line);margin:26px 0}
+.block>figcaption{font-family:var(--display);font-size:13px;font-weight:600;
+  padding:13px 18px;border-bottom:1px solid var(--line);color:var(--ink)}
+.block>figcaption span{display:block;font-family:var(--body);font-weight:400;
+  font-size:13.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;
+  font-variant-numeric:tabular-nums}
+th,td{padding:8px 14px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--hair)}
+th{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--surface)}
+th:first-child,td:first-child{text-align:left}
+tbody tr:last-child td{border-bottom:none}
+tr.tot td{border-top:1px solid var(--line);font-weight:600;background:var(--panel)}
+.neg{color:var(--red)} .pos{color:var(--green)} .dim{color:var(--faint)}
+
+/* ---------- band legend ---------- */
+.bands{display:flex;flex-direction:column;gap:0;padding:18px;font-family:var(--mono);font-size:13px}
+.bandrow{display:flex;align-items:center;gap:14px;padding:7px 0}
+.swatch{width:52px;height:3px;border-radius:2px;flex:none}
+.bandrow b{font-weight:500;color:var(--ink);min-width:132px}
+.bandrow span{color:var(--muted);font-size:12.5px}
+.bandrow.hi b{font-weight:600}
+.bandrow.hi span{color:var(--blue)}
+
+/* ---------- charts ---------- */
+figure{margin:0}
+svg{display:block;width:100%;height:auto}
+.tip{position:fixed;pointer-events:none;opacity:0;transition:opacity .1s;
+  background:var(--ink);color:var(--ground);font-family:var(--mono);font-size:12px;
+  line-height:1.5;padding:7px 10px;border-radius:3px;z-index:9;white-space:nowrap}
+.key{display:flex;flex-wrap:wrap;gap:18px;padding:0 18px 16px;font-family:var(--display);
+  font-size:12.5px;font-weight:500;color:var(--ink2);align-items:center}
+.key i{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:7px;
+  vertical-align:-1px}
+
+/* ---------- callout ---------- */
+.pull{border-left:3px solid var(--blue);padding:2px 0 2px 20px;margin:26px 0;
+  font-size:19px;line-height:1.48;color:var(--ink)}
+.note{background:var(--panel);border:1px solid var(--line);padding:16px 20px;
+  margin:24px 0;font-size:15.5px;line-height:1.55}
+.note b{font-family:var(--display);font-weight:600}
+pre{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--panel);
+  border:1px solid var(--line);padding:15px 18px;overflow-x:auto;margin:20px 0;
+  color:var(--ink2)}
+code{font-family:var(--mono);font-size:.9em;color:var(--ink)}
+ul{padding-left:20px;margin:0 0 1.05em}
+li{margin-bottom:.5em}
+.spec{display:grid;grid-template-columns:auto 1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);font-size:14.5px;margin:24px 0}
+.spec dt{background:var(--panel);padding:10px 16px;font-family:var(--display);
+  font-weight:600;font-size:13px;color:var(--ink2);white-space:nowrap}
+.spec dd{background:var(--surface);padding:10px 16px;margin:0;font-family:var(--mono);font-size:13px}
+footer{border-top:1px solid var(--line);padding-top:20px;margin-top:12px;
+  font-family:var(--mono);font-size:12px;color:var(--faint);line-height:1.7}
+@media (max-width:640px){
+  body{font-size:16px}
+  .spec{grid-template-columns:1fr}
+  .spec dt{padding-bottom:2px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">SHERM-QUANTY · Research note v5 · NSE hourly</div>
+  <h1>The band fade, taken apart</h1>
+  <p class="standfirst">Short the 2.1&#8239;σ band, cover at 0.3&#8239;σ, only while the blue line sits inside the regression channel, no stop. Tested exactly as specified, on the timeframe it was drawn on. It loses — and the Monte Carlo says the market had nothing to do with it.</p>
+  <div class="byline">
+    <span>17 instruments</span><span>201,965 hourly bars</span><span>2009–2023</span>
+    <span>11,502 round trips</span><span>limit-order execution</span>
+  </div>
+</header>
+
+<dl class="verdict">
+  <div class="vc"><dt>Instruments positive</dt><dd>0 / 17</dd><small>NIFTY, BANKNIFTY, 15 large caps</small></div>
+  <div class="vc"><dt>Parameter configs positive</dt><dd>0 / 120</dd><small>best of them still −0.23</small></div>
+  <div class="vc"><dt>Stop-loss variants positive</dt><dd>0 / 102</dd><small>stops made it worse</small></div>
+  <div class="vc"><dt>Calendar years positive</dt><dd>0 / 14</dd><small>2010 through 2023</small></div>
+  <div class="vc"><dt>Cause</dt><dd class="n" style="font-size:20px">Payoff shape</dd><small>not the market, not costs, not the gate</small></div>
+</dl>
+
+<section>
+  <div class="eyebrow"><span>01 — The specification</span><b>as read off the settings panels</b></div>
+  <h2>What was tested</h2>
+  <div class="prose">
+  <p>Every number below comes from this one rule set. Nothing was tuned to make it work, and nothing was quietly dropped when it didn't.</p>
+  </div>
+  <dl class="spec">
+    <dt>Bollinger (RegDet+VC)</dt><dd>length 20 · SMA basis · source close · outer 2.1 sd · inner 0.3 sd · offset 0</dd>
+    <dt>Regression channel</dt><dd>LRC_SH · length 400</dd>
+    <dt>Short</dt><dd>price touches the outer upper band → cover at the inner upper band</dd>
+    <dt>Long</dt><dd>price touches the outer lower band → sell at the inner lower band</dd>
+    <dt>Gate</dt><dd>trade only while the blue line is inside the regression channel</dd>
+    <dt>Stop loss</dt><dd>none</dd>
+  </dl>
+
+  <h3>Which line is blue</h3>
+  <div class="prose"><p>Settled from the indicator source rather than the screenshot. Of the five Bollinger plots, exactly one is blue — so the gate is <em>the 20-period SMA must lie between the two regression-channel lines</em>.</p></div>
+  <figure class="block"><figcaption>Plot colours in <code>regdet_v6_bb_IL.pine</code><span>Lines 469–475, verbatim</span></figcaption>
+    <div class="bands">
+      <div class="bandrow"><span class="swatch" style="background:#F23645"></span><b>BB Upper</b><span>#F23645 &nbsp;red &nbsp;— the short trigger</span></div>
+      <div class="bandrow"><span class="swatch" style="background:#F23645;opacity:.55;height:2px"></span><b>BB Inner Upper</b><span>#F23645 dimmed &nbsp;— the cover target</span></div>
+      <div class="bandrow hi"><span class="swatch" style="background:#2962FF;height:4px"></span><b>BB Basis</b><span>#2962FF &nbsp;— the blue line. The 20-period SMA.</span></div>
+      <div class="bandrow"><span class="swatch" style="background:#089981;opacity:.55;height:2px"></span><b>BB Inner Lower</b><span>#089981 dimmed &nbsp;— the sell target</span></div>
+      <div class="bandrow"><span class="swatch" style="background:#089981"></span><b>BB Lower</b><span>#089981 &nbsp;green &nbsp;— the long trigger</span></div>
+    </div>
+  </figure>
+  <div class="note"><b>One number I could not observe.</b> LRC_SH exposes only <code>Length</code>; its deviation multiplier is hard-coded in a script I have not seen. That multiplier <em>is</em> the gate, so it is swept from 0.5 to 3.0 in every test and nothing is fitted to it. At 2.0 the gate is open 87–90% of the time. Send me the LRC_SH source and I will pin it exactly.</div>
+</section>
+
+<section>
+  <div class="eyebrow"><span>02 — The data</span><b>four defects, all load-bearing</b></div>
+  <h2>What was wrong with the bars before anything was tested</h2>
+  <div class="prose">
+  <p>Every market-data host is blocked at this session's proxy, so the hourly bars were rebuilt from 1-minute prints in a public archive and resampled to the NSE session — 09:15 to 15:30, seven bars a day, verified at 6.99–7.00 bars per session.</p>
+  <p>That archive is not clean. Four separate defects had to be fixed before any result was worth printing.</p>
+  </div>
+  <figure class="block"><figcaption>Defects found and what was done about them</figcaption>
+    <div class="scroll"><table>
+      <thead><tr><th>Defect</th><th style="text-align:left">Worked example</th><th style="text-align:left">Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Foreign prices in the file</td><td style="text-align:left">BANKNIFTY 2015-06-24 09:15 opens at 18403 with a low of <b class="neg">1439</b></td><td style="text-align:left">drop the session</td></tr>
+        <tr><td>Interleaved adjusted prints</td><td style="text-align:left">ICICIBANK Jun-2017 alternating between two levels 10% apart</td><td style="text-align:left">drop sessions whose move is undone next bar</td></tr>
+        <tr><td>A two-year hole</td><td style="text-align:left">stocks run 2013-06→2014-06, then nothing until 2016-09</td><td style="text-align:left">cut at every gap, keep the longest run</td></tr>
+        <tr><td>Unadjusted corporate actions</td><td style="text-align:left">RELIANCE 1:1, TCS 1:1, INFY 1:1, HDFCBANK 1:2, LT 1:2</td><td style="text-align:left">back-adjust to the snapped ratio</td></tr>
+      </tbody>
+    </table></div>
+  </figure>
+  <div class="prose">
+  <p>The hole was the dangerous one. A 400-bar regression fitted across it is fitted across a two-year price move that never appeared on any chart, and splits that happened <em>inside</em> the hole never show up as a single-day ratio at all. Before the fix, BANKNIFTY reported a long-side P&amp;L of <b>+22.2</b> — the entire figure was one fabricated −92% / +1199% pair.</p>
+  </div>
+  <div class="pull">Had I run the backtest on the archive as downloaded, it would have printed a profitable BANKNIFTY strategy built on a price that never traded.</div>
+  <h3>Independent validation</h3>
+  <div class="prose"><p>The cleaned hourly bars, collapsed to daily, against the unrelated <code>eod2</code> daily feed:</p></div>
+  <figure class="block"><figcaption>Cleaned hourly vs. an independent daily source<span>15 stocks, 1,353–1,520 overlapping sessions each</span></figcaption>
+    <div class="scroll"><table>
+      <thead><tr><th style="text-align:left">Check</th><th>Result</th><th style="text-align:left">Reading</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left">Price-ratio stability</td><td class="pos">0.2%</td><td style="text-align:left">constant offsets only — old split scale factors, harmless</td></tr>
+        <tr><td style="text-align:left">Daily return correlation</td><td class="pos">0.983 – 0.991</td><td style="text-align:left">the two feeds agree bar for bar</td></tr>
+        <tr><td style="text-align:left">Median daily difference</td><td>14 – 22 bps</td><td style="text-align:left">the closing-auction gap, exactly as expected</td></tr>
+      </tbody>
+    </table></div>
+  </figure>
+</section>
+
+<section>
+  <div class="eyebrow"><span>03 — Execution</span><b>resting orders, not next-bar fills</b></div>
+  <h2>Giving the strategy its best fair shot</h2>
+  <div class="prose">
+  <p>A backtest that signals at one bar's close and fills at the next throws away the snap-back this strategy exists to capture, and nobody trading a band system would do that. So the engine uses <strong>resting limit orders at the band levels</strong>: the levels for a bar are fixed by the bars before it, so the order is already sitting there when the bar opens.</p>
+  <p>Fills are taken <em>at</em> the level even when the bar gapped clean through it, which is the conservative side in all four cases. Truncating the price series leaves earlier P&amp;L bit-identical, and every trade reconciles by hand to <code>(exit level − entry level) / entry level − costs</code>.</p>
+  <p>Entering at the band rather than at the same bar's open is worth about <strong>+2.2 Sharpe</strong>. That is real, and it is an execution effect, not an edge.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow"><span>04 — The result</span><b>negative everywhere</b></div>
+  <h2>Seventeen instruments, no survivors</h2>
+  <figure class="block">
+    <figcaption>Full results, limit execution, 2 bps per side<span>Sorted worst to best. Buy-and-hold on the identical bars is shown for scale.</span></figcaption>
+    <div class="scroll"><table id="main">
+      <thead><tr><th>Instrument</th><th>Sharpe</th><th>Sortino</th><th>Calmar</th><th>Max DD</th><th>Win rate</th><th>Payoff</th><th>Profit factor</th><th>Expectancy</th><th>Kelly</th><th>Alpha t</th><th>Trades</th><th>Buy &amp; hold</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </figure>
+  <div class="prose">
+  <p>The gate is not the culprit. It helps — consistently, and slightly: <b>+0.03 to +0.10</b> Sharpe at channel widths of 1.5&#8239;σ and above, <b>+0.25</b> at 0.5&#8239;σ, entirely by trading less. Costs are not the culprit either: at <em>zero</em> cost the mean is still −1.12.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow"><span>05 — The mechanism</span><b>where the money goes</b></div>
+  <h2>You are right two times in three, and wrong three times as expensively</h2>
+  <div class="prose">
+  <p>This is the whole story, and it is visible in four numbers.</p>
+  </div>
+<pre>win rate       64.7%        <span style="color:var(--green)">← right about two trades in three</span>
+average win    +0.67%
+average loss   −1.97%       <span style="color:var(--red)">← the losers run three times further</span>
+payoff ratio    0.34
+───────────────────────────────────────────────
+expectancy     −0.26% per trade</pre>
+  <div class="prose">
+  <p>A fixed 1.8&#8239;σ target against a loss with no stop is a shape, and the shape has a break-even line. At a 64.7% win rate you need a payoff ratio of <strong>0.55</strong>. You have 0.34. Put the other way round: at the payoff ratio you actually get, you would need to win <strong>74.7%</strong> of trades, not 64.7%.</p>
+  <p>Every instrument sits below that line, and not marginally.</p>
+  </div>
+  <figure class="block">
+    <figcaption>Every instrument against its own break-even<span>The curve is payoff = (1 − win rate) / win rate. On it, you break even; below it, you pay to trade. Hover any point.</span></figcaption>
+    <div id="c1"></div>
+  </figure>
+</section>
+
+<section>
+  <div class="eyebrow"><span>06 — Monte Carlo</span><b>three controls, one at a time</b></div>
+  <h2>Was it the market, or the machinery?</h2>
+  <div class="prose">
+  <p>A negative Sharpe says a strategy loses. It does not say why, and the why is the only part that tells you what to build next. There are four places the money can go, and each has a control that changes one thing and holds the rest fixed.</p>
+  </div>
+  <figure class="block"><figcaption>The three controls</figcaption>
+    <div class="scroll"><table>
+      <thead><tr><th style="text-align:left">Control</th><th style="text-align:left">What it changes</th><th style="text-align:left">Result</th><th style="text-align:left">Reading</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left">Trade bootstrap<br><span class="dim">20,000 resamples</span></td><td style="text-align:left">the order of the realised trades</td><td style="text-align:left">p(positive) &lt; 0.01 on 13 of 17<br><span class="dim">trade t −0.6 to −9.1</span></td><td style="text-align:left"><b>Not luck.</b></td></tr>
+        <tr><td style="text-align:left">Rotated entry<br><span class="dim">200 rotations</span></td><td style="text-align:left">only <em>when</em> trades fire — count, side mix and exits held fixed</td><td style="text-align:left">real −3.51 vs rotated −3.98</td><td style="text-align:left"><b>The bands do pick better moments</b> than random, by +0.47. Nowhere near enough.</td></tr>
+        <tr><td style="text-align:left">Synthetic market<br><span class="dim">150 block bootstraps</span></td><td style="text-align:left">destroys serial structure; keeps volatility, fat tails, bar shapes</td><td style="text-align:left">real −1.34 vs synthetic −1.41</td><td style="text-align:left"><b>The market contributes nothing.</b></td></tr>
+        <tr class="tot"><td style="text-align:left">…and with drift removed</td><td style="text-align:left">also zeroes the upward drift</td><td style="text-align:left">−1.37</td><td style="text-align:left"><b>Not "shorting a bull market" either.</b></td></tr>
+      </tbody>
+    </table></div>
+  </figure>
+  <figure class="block">
+    <figcaption>Real market vs. a market with no structure at all<span>Each row is one instrument. If the strategy were reading something real, the blue dot would sit clearly to the right of the amber one.</span></figcaption>
+    <div class="key"><span><i style="background:var(--blue)"></i>Real NSE hourly bars</span><span><i style="background:var(--amber)"></i>Block-bootstrapped, structure destroyed</span></div>
+    <div id="c2"></div>
+  </figure>
+  <div class="pull">The strategy scores the same on real NSE data as on data with every trace of structure removed. Whatever it is reading, it is not the market.</div>
+</section>
+
+<section>
+  <div class="eyebrow"><span>07 — The entry, on its own</span><b>no exit rule involved</b></div>
+  <h2>A band touch predicts nothing</h2>
+  <div class="prose">
+  <p>The Monte Carlo is confirmed independently by a test that ignores the exit rule entirely. Take every bar where price touched an outer band, and measure the return over the next 5, 10 and 20 bars in the direction the fade is betting on, against the instrument's own unconditional drift.</p>
+  </div>
+<pre>events per cell   ~26,000
+excess return     −0.03%  to  +0.08%
+t-statistic       −0.58   to  +0.15
+instruments positive     7 of 17</pre>
+  <div class="prose">
+  <p>Zero, at every horizon, on both sides, with and without the gate. There is no predictive content in a band touch on these series. That is why no exit rule rescues it — and it is exactly what the 0-of-120 parameter grid and the 0-of-102 stop grid were already saying.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow"><span>08 — What this does and doesn't say</span></div>
+  <h2>Reading it honestly</h2>
+  <div class="prose">
+  <ul>
+    <li><strong>It does not say the indicators are wrong.</strong> The blue-line gate helps. The band level is worth ~2.2 Sharpe as an execution reference. Both are real; both are small.</li>
+    <li><strong>It does say the shape loses.</strong> A fixed 1.8&#8239;σ target against an unbounded loss needs an entry that is right roughly three times in four. This entry is right two times in three, and that gap is not closable by tuning.</li>
+    <li><strong>The breakout mirror is deliberately not reported.</strong> Negating the position is a clean mirror only for close-to-close P&amp;L — there it flips −0.32 to +0.32 gross, which still does not clear 2.3 bps of cost. With resting orders it is a different strategy needing its own exit rule, and inventing one would mean reporting a strategy nobody specified.</li>
+    <li><strong>Stops were tested anyway</strong>, against the spec, because the loss shape invited it. They make it worse: −2.36 at a 1&#8239;σ stop against −1.34 with none. Your "no stop loss" instinct was the better of the two.</li>
+  </ul>
+  <h3>Where an edge could actually come from</h3>
+  <p>The diagnosis points somewhere specific. The entry needs predictive content it currently has none of — a condition that separates the touches that revert from the touches that run. The gate is the right <em>kind</em> of idea and it is measurably worth something; it is simply far too weak on its own. The next honest test is to find a conditioner with a real t-statistic on that forward return before building any exit around it.</p>
+  </div>
+</section>
+
+<footer>
+  Bars rebuilt from 1-minute NSE prints, resampled to the 09:15 session open · cross-validated against the eod2 daily feed at 0.983–0.991 return correlation<br>
+  All figures reproducible from <code>research/channel_regime/</code> — <code>bbfade.py</code>, <code>data_1h.py</code>, <code>diagnostics.py</code> · tables in <code>results/channel_regime/29–50</code>
+</footer>
+</div>
+
+<div class="tip" id="tip"></div>
+<script>
+const D = [
+ {
+  "inst": "RELIANCE",
+  "sharpe": -2.775,
+  "win": 0.5727,
+  "payoff": 0.2986,
+  "pf": 0.4,
+  "exp": -0.006,
+  "kelly": -0.858,
+  "dd": -0.97,
+  "sortino": -2.346,
+  "calmar": -0.449,
+  "trades": 557,
+  "synth": -2.326,
+  "synth_sd": 0.377,
+  "zd": -2.26,
+  "lo": -1.363,
+  "so": -2.477,
+  "rot": -4.289,
+  "realopen": -4.539,
+  "at": -6.34,
+  "bh": 1.012
+ },
+ {
+  "inst": "NIFTY",
+  "sharpe": -2.639,
+  "win": 0.5575,
+  "payoff": 0.3248,
+  "pf": 0.409,
+  "exp": -0.00322,
+  "kelly": -0.805,
+  "dd": -0.979,
+  "sortino": -2.391,
+  "calmar": -0.26,
+  "trades": 1173,
+  "synth": -2.575,
+  "synth_sd": 0.231,
+  "zd": -2.59,
+  "lo": -1.262,
+  "so": -2.471,
+  "rot": -4.389,
+  "realopen": -4.113,
+  "at": -9.97,
+  "bh": 0.673
+ },
+ {
+  "inst": "BANKNIFTY",
+  "sharpe": -2.39,
+  "win": 0.5868,
+  "payoff": 0.3074,
+  "pf": 0.437,
+  "exp": -0.00432,
+  "kelly": -0.757,
+  "dd": -0.995,
+  "sortino": -2.041,
+  "calmar": -0.334,
+  "trades": 1164,
+  "synth": -2.438,
+  "synth_sd": 0.238,
+  "zd": -2.442,
+  "lo": -1.091,
+  "so": -2.286,
+  "rot": -4.151,
+  "realopen": -3.945,
+  "at": -8.64,
+  "bh": 0.621
+ },
+ {
+  "inst": "MARUTI",
+  "sharpe": -1.762,
+  "win": 0.672,
+  "payoff": 0.2762,
+  "pf": 0.566,
+  "exp": -0.00339,
+  "kelly": -0.516,
+  "dd": -0.899,
+  "sortino": -1.476,
+  "calmar": -0.341,
+  "trades": 628,
+  "synth": -1.642,
+  "synth_sd": 0.371,
+  "zd": -1.69,
+  "lo": -0.746,
+  "so": -1.747,
+  "rot": -4.072,
+  "realopen": -4.064,
+  "at": -4.27,
+  "bh": 0.432
+ },
+ {
+  "inst": "BAJFINANCE",
+  "sharpe": -1.644,
+  "win": 0.6429,
+  "payoff": 0.3071,
+  "pf": 0.553,
+  "exp": -0.0042,
+  "kelly": -0.52,
+  "dd": -0.908,
+  "sortino": -1.34,
+  "calmar": -0.391,
+  "trades": 546,
+  "synth": -1.895,
+  "synth_sd": 0.341,
+  "zd": -1.837,
+  "lo": -0.41,
+  "so": -1.817,
+  "rot": -3.894,
+  "realopen": -3.909,
+  "at": -3.8,
+  "bh": 0.802
+ },
+ {
+  "inst": "SBIN",
+  "sharpe": -1.63,
+  "win": 0.5978,
+  "payoff": 0.3608,
+  "pf": 0.536,
+  "exp": -0.00432,
+  "kelly": -0.517,
+  "dd": -0.922,
+  "sortino": -1.239,
+  "calmar": -0.367,
+  "trades": 547,
+  "synth": -1.555,
+  "synth_sd": 0.358,
+  "zd": -1.615,
+  "lo": -0.783,
+  "so": -1.437,
+  "rot": -3.796,
+  "realopen": -3.647,
+  "at": -4.26,
+  "bh": 0.541
+ },
+ {
+  "inst": "ITC",
+  "sharpe": -1.587,
+  "win": 0.6465,
+  "payoff": 0.3014,
+  "pf": 0.551,
+  "exp": -0.00293,
+  "kelly": -0.526,
+  "dd": -0.861,
+  "sortino": -1.214,
+  "calmar": -0.311,
+  "trades": 611,
+  "synth": -1.306,
+  "synth_sd": 0.373,
+  "zd": -1.246,
+  "lo": -0.86,
+  "so": -1.249,
+  "rot": -3.911,
+  "realopen": -3.756,
+  "at": -3.95,
+  "bh": 0.423
+ },
+ {
+  "inst": "TCS",
+  "sharpe": -1.283,
+  "win": 0.6343,
+  "payoff": 0.3767,
+  "pf": 0.653,
+  "exp": -0.00211,
+  "kelly": -0.336,
+  "dd": -0.771,
+  "sortino": -1.09,
+  "calmar": -0.269,
+  "trades": 629,
+  "synth": -1.287,
+  "synth_sd": 0.382,
+  "zd": -1.208,
+  "lo": -0.517,
+  "so": -1.231,
+  "rot": -4.246,
+  "realopen": -3.425,
+  "at": -3.12,
+  "bh": 0.833
+ },
+ {
+  "inst": "INFY",
+  "sharpe": -1.185,
+  "win": 0.6566,
+  "payoff": 0.3476,
+  "pf": 0.665,
+  "exp": -0.0021,
+  "kelly": -0.331,
+  "dd": -0.784,
+  "sortino": -0.897,
+  "calmar": -0.276,
+  "trades": 632,
+  "synth": -1.469,
+  "synth_sd": 0.351,
+  "zd": -1.314,
+  "lo": -0.406,
+  "so": -1.203,
+  "rot": -4.057,
+  "realopen": -3.13,
+  "at": -2.83,
+  "bh": 0.797
+ },
+ {
+  "inst": "LT",
+  "sharpe": -1.179,
+  "win": 0.6637,
+  "payoff": 0.33,
+  "pf": 0.651,
+  "exp": -0.00227,
+  "kelly": -0.355,
+  "dd": -0.762,
+  "sortino": -0.939,
+  "calmar": -0.284,
+  "trades": 559,
+  "synth": -1.254,
+  "synth_sd": 0.433,
+  "zd": -1.294,
+  "lo": -0.336,
+  "so": -1.268,
+  "rot": -3.883,
+  "realopen": -3.482,
+  "at": -2.97,
+  "bh": 0.521
+ },
+ {
+  "inst": "HDFCBANK",
+  "sharpe": -1.069,
+  "win": 0.6667,
+  "payoff": 0.3394,
+  "pf": 0.679,
+  "exp": -0.00186,
+  "kelly": -0.315,
+  "dd": -0.72,
+  "sortino": -0.837,
+  "calmar": -0.254,
+  "trades": 621,
+  "synth": -1.406,
+  "synth_sd": 0.31,
+  "zd": -1.426,
+  "lo": -0.042,
+  "so": -1.26,
+  "rot": -3.791,
+  "realopen": -3.062,
+  "at": -2.52,
+  "bh": 0.774
+ },
+ {
+  "inst": "AXISBANK",
+  "sharpe": -0.896,
+  "win": 0.6587,
+  "payoff": 0.3744,
+  "pf": 0.722,
+  "exp": -0.00199,
+  "kelly": -0.253,
+  "dd": -0.781,
+  "sortino": -0.782,
+  "calmar": -0.262,
+  "trades": 627,
+  "synth": -1.319,
+  "synth_sd": 0.321,
+  "zd": -1.238,
+  "lo": -0.185,
+  "so": -0.98,
+  "rot": -3.758,
+  "realopen": -3.194,
+  "at": -2.46,
+  "bh": 0.476
+ },
+ {
+  "inst": "ICICIBANK",
+  "sharpe": -0.854,
+  "win": 0.6541,
+  "payoff": 0.3876,
+  "pf": 0.733,
+  "exp": -0.00193,
+  "kelly": -0.238,
+  "dd": -0.712,
+  "sortino": -0.684,
+  "calmar": -0.269,
+  "trades": 555,
+  "synth": -1.251,
+  "synth_sd": 0.345,
+  "zd": -1.201,
+  "lo": 0.049,
+  "so": -1.152,
+  "rot": -3.629,
+  "realopen": -2.607,
+  "at": -2.15,
+  "bh": 0.734
+ },
+ {
+  "inst": "ASIANPAINT",
+  "sharpe": -0.755,
+  "win": 0.7025,
+  "payoff": 0.3326,
+  "pf": 0.785,
+  "exp": -0.00127,
+  "kelly": -0.192,
+  "dd": -0.716,
+  "sortino": -0.608,
+  "calmar": -0.206,
+  "trades": 669,
+  "synth": -0.811,
+  "synth_sd": 0.357,
+  "zd": -0.692,
+  "lo": -0.29,
+  "so": -0.735,
+  "rot": -4.078,
+  "realopen": -3.366,
+  "at": -1.88,
+  "bh": 0.856
+ },
+ {
+  "inst": "KOTAKBANK",
+  "sharpe": -0.509,
+  "win": 0.6828,
+  "payoff": 0.3864,
+  "pf": 0.832,
+  "exp": -0.00097,
+  "kelly": -0.138,
+  "dd": -0.606,
+  "sortino": -0.406,
+  "calmar": -0.188,
+  "trades": 640,
+  "synth": -0.812,
+  "synth_sd": 0.361,
+  "zd": -0.711,
+  "lo": -0.105,
+  "so": -0.597,
+  "rot": -3.758,
+  "realopen": -3.048,
+  "at": -1.36,
+  "bh": 0.661
+ },
+ {
+  "inst": "BHARTIARTL",
+  "sharpe": -0.367,
+  "win": 0.6969,
+  "payoff": 0.3807,
+  "pf": 0.875,
+  "exp": -0.00083,
+  "kelly": -0.099,
+  "dd": -0.661,
+  "sortino": -0.302,
+  "calmar": -0.158,
+  "trades": 673,
+  "synth": -0.246,
+  "synth_sd": 0.33,
+  "zd": -0.28,
+  "lo": 0.396,
+  "so": -0.858,
+  "rot": -3.947,
+  "realopen": -3.132,
+  "at": -0.88,
+  "bh": 0.609
+ },
+ {
+  "inst": "HINDUNILVR",
+  "sharpe": -0.236,
+  "win": 0.7049,
+  "payoff": 0.3873,
+  "pf": 0.925,
+  "exp": -0.00034,
+  "kelly": -0.057,
+  "dd": -0.436,
+  "sortino": -0.202,
+  "calmar": -0.11,
+  "trades": 671,
+  "synth": -0.367,
+  "synth_sd": 0.359,
+  "zd": -0.311,
+  "lo": 0.268,
+  "so": -0.454,
+  "rot": -3.921,
+  "realopen": -3.21,
+  "at": -0.35,
+  "bh": 0.899
+ }
+];
+const tip = document.getElementById('tip');
+const show = (e, html) => { tip.innerHTML = html; tip.style.opacity = 1;
+  const r = 14; let x = e.clientX + r, y = e.clientY + r;
+  const b = tip.getBoundingClientRect();
+  if (x + b.width > innerWidth - 8) x = e.clientX - b.width - r;
+  if (y + b.height > innerHeight - 8) y = e.clientY - b.height - r;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'; };
+const hide = () => tip.style.opacity = 0;
+const f = (v, d = 2) => (v >= 0 ? '+' : '') + v.toFixed(d);
+
+/* ---- table ---- */
+const tb = document.querySelector('#main tbody');
+tb.innerHTML = D.map(d => `<tr>
+  <td>${d.inst}</td>
+  <td class="neg">${d.sharpe.toFixed(2)}</td><td class="neg">${d.sortino.toFixed(2)}</td>
+  <td class="neg">${d.calmar.toFixed(2)}</td><td class="neg">${(d.dd*100).toFixed(0)}%</td>
+  <td>${(d.win*100).toFixed(1)}%</td><td>${d.payoff.toFixed(2)}</td>
+  <td class="neg">${d.pf.toFixed(2)}</td><td class="neg">${(d.exp*100).toFixed(2)}%</td>
+  <td class="neg">${d.kelly.toFixed(2)}</td><td class="neg">${d.at.toFixed(1)}</td>
+  <td class="dim">${d.trades}</td><td class="pos">${f(d.bh)}</td></tr>`).join('')
+  + `<tr class="tot"><td>Mean</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.sharpe,0)/D.length).toFixed(2)}</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.sortino,0)/D.length).toFixed(2)}</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.calmar,0)/D.length).toFixed(2)}</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.dd,0)/D.length*100).toFixed(0)}%</td>
+  <td>${(D.reduce((a,d)=>a+d.win,0)/D.length*100).toFixed(1)}%</td>
+  <td>${(D.reduce((a,d)=>a+d.payoff,0)/D.length).toFixed(2)}</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.pf,0)/D.length).toFixed(2)}</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.exp,0)/D.length*100).toFixed(2)}%</td>
+  <td class="neg">${(D.reduce((a,d)=>a+d.kelly,0)/D.length).toFixed(2)}</td>
+  <td class="dim">—</td>
+  <td class="dim">${D.reduce((a,d)=>a+d.trades,0)}</td>
+  <td class="pos">${f(D.reduce((a,d)=>a+d.bh,0)/D.length)}</td></tr>`;
+
+const NS = 'http://www.w3.org/2000/svg';
+const el = (n, a, p) => { const e = document.createElementNS(NS, n);
+  for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+
+/* ---- chart 1: break-even frontier ---- */
+(function () {
+  const W = 1000, H = 560, m = { t: 26, r: 30, b: 62, l: 76 };
+  const x0 = 0.535, x1 = 0.725, y0 = 0.24, y1 = 0.92;
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+  const Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  const s = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img',
+    'aria-label': 'Payoff ratio against win rate for 17 instruments, all below the break-even curve' });
+  s.appendChild(Object.assign(document.createElementNS(NS,'title'),
+    {textContent:'All 17 instruments sit below the break-even curve'}));
+
+  // shaded losing region, under the curve
+  let pts = [];
+  for (let w = x0; w <= x1 + 1e-9; w += 0.002) pts.push([X(w), Y(Math.min((1 - w) / w, y1))]);
+  el('path', { d: `M${X(x0)},${Y(y0)} L` + pts.map(p => p.join(',')).join(' L') +
+    ` L${X(x1)},${Y(y0)} Z`, fill: 'var(--shade)' }, s);
+
+  // grid + axes
+  for (let v = 0.3; v <= 0.9; v += 0.1) {
+    el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: 'var(--hair)', 'stroke-width': 1 }, s);
+    el('text', { x: m.l - 12, y: Y(v) + 4, 'text-anchor': 'end', fill: 'var(--muted)',
+      'font-family': 'var(--mono)', 'font-size': 13 }, s).textContent = v.toFixed(1);
+  }
+  for (let v = 0.55; v <= 0.72; v += 0.05) {
+    el('line', { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, stroke: 'var(--hair)', 'stroke-width': 1 }, s);
+    el('text', { x: X(v), y: H - m.b + 24, 'text-anchor': 'middle', fill: 'var(--muted)',
+      'font-family': 'var(--mono)', 'font-size': 13 }, s).textContent = (v * 100).toFixed(0) + '%';
+  }
+  el('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: 'var(--line)', 'stroke-width': 1 }, s);
+  el('line', { x1: m.l, x2: m.l, y1: m.t, y2: H - m.b, stroke: 'var(--line)', 'stroke-width': 1 }, s);
+  el('text', { x: (m.l + W - m.r) / 2, y: H - 16, 'text-anchor': 'middle', fill: 'var(--ink2)',
+    'font-family': 'var(--display)', 'font-size': 14, 'font-weight': 600 }, s)
+    .textContent = 'Win rate';
+  el('text', { x: 20, y: (m.t + H - m.b) / 2, fill: 'var(--ink2)', 'font-family': 'var(--display)',
+    'font-size': 14, 'font-weight': 600, 'text-anchor': 'middle',
+    transform: `rotate(-90 20 ${(m.t + H - m.b) / 2})` }, s)
+    .textContent = 'Payoff ratio  (avg win ÷ avg loss)';
+
+  // break-even curve
+  el('path', { d: 'M' + pts.map(p => p.join(',')).join(' L'), fill: 'none',
+    stroke: 'var(--red)', 'stroke-width': 2.5 }, s);
+  el('text', { x: X(0.60), y: Y(0.672) - 14, fill: 'var(--red)', 'font-family': 'var(--display)',
+    'font-size': 14, 'font-weight': 600 }, s).textContent = 'break even';
+  el('text', { x: X(0.615), y: Y(0.44), fill: 'var(--muted)', 'font-family': 'var(--display)',
+    'font-size': 13.5 }, s).textContent = 'every instrument sits in here — you pay to trade';
+
+  // points
+  const lab = { RELIANCE: [0, -17], NIFTY: [-4, 17], BANKNIFTY: [8, 16], HINDUNILVR: [0, -17],
+    BHARTIARTL: [4, 17], KOTAKBANK: [0, -17] };
+  D.forEach(d => {
+    const cx = X(d.win), cy = Y(d.payoff);
+    const g = el('g', {}, s);
+    el('circle', { cx, cy, r: 6.5, fill: 'var(--blue)', stroke: 'var(--surface)', 'stroke-width': 2 }, g);
+    el('circle', { cx, cy, r: 16, fill: 'transparent' }, g);
+    if (lab[d.inst]) {
+      const [dx, dy] = lab[d.inst];
+      el('text', { x: cx + dx, y: cy + dy, 'text-anchor': 'middle', fill: 'var(--ink2)',
+        'font-family': 'var(--mono)', 'font-size': 12 }, g).textContent = d.inst;
+    }
+    g.style.cursor = 'crosshair';
+    const be = (1 - d.win) / d.win;
+    g.addEventListener('mousemove', e => show(e,
+      `<b>${d.inst}</b><br>win rate &nbsp;${(d.win * 100).toFixed(1)}%<br>` +
+      `payoff &nbsp;&nbsp;&nbsp;${d.payoff.toFixed(2)}<br>` +
+      `needs &nbsp;&nbsp;&nbsp;&nbsp;${be.toFixed(2)} to break even<br>` +
+      `short by &nbsp;${((1 - d.payoff / be) * 100).toFixed(0)}%<br>` +
+      `Sharpe &nbsp;&nbsp;&nbsp;${d.sharpe.toFixed(2)}`));
+    g.addEventListener('mouseleave', hide);
+  });
+  document.getElementById('c1').appendChild(s);
+})();
+
+/* ---- chart 2: real vs synthetic dumbbell ---- */
+(function () {
+  const rows = [...D].sort((a, b) => a.sharpe - b.sharpe);
+  const rh = 30, m = { t: 34, r: 130, b: 46, l: 118 };
+  const W = 1000, H = m.t + m.b + rows.length * rh;
+  const lo = -3.1, hi = 0.2;
+  const X = v => m.l + (v - lo) / (hi - lo) * (W - m.l - m.r);
+  const s = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img',
+    'aria-label': 'Real versus synthetic Sharpe for each instrument; the two coincide' });
+
+  for (let v = -3; v <= 0; v += 1) {
+    el('line', { x1: X(v), x2: X(v), y1: m.t - 12, y2: H - m.b + 4,
+      stroke: v === 0 ? 'var(--line)' : 'var(--hair)', 'stroke-width': 1 }, s);
+    el('text', { x: X(v), y: H - m.b + 24, 'text-anchor': 'middle', fill: 'var(--muted)',
+      'font-family': 'var(--mono)', 'font-size': 13 }, s).textContent = v;
+  }
+  el('text', { x: (m.l + W - m.r) / 2, y: H - 12, 'text-anchor': 'middle', fill: 'var(--ink2)',
+    'font-family': 'var(--display)', 'font-size': 14, 'font-weight': 600 }, s)
+    .textContent = 'Sharpe ratio';
+
+  rows.forEach((d, i) => {
+    const y = m.t + i * rh + rh / 2;
+    const g = el('g', {}, s);
+    el('rect', { x: 0, y: y - rh / 2, width: W, height: rh, fill: 'transparent' }, g);
+    el('text', { x: m.l - 14, y: y + 4, 'text-anchor': 'end', fill: 'var(--ink2)',
+      'font-family': 'var(--mono)', 'font-size': 12.5 }, g).textContent = d.inst;
+    el('line', { x1: X(Math.min(d.sharpe, d.synth)), x2: X(Math.max(d.sharpe, d.synth)),
+      y1: y, y2: y, stroke: 'var(--line)', 'stroke-width': 2.5 }, g);
+    el('circle', { cx: X(d.synth), cy: y, r: 5.5, fill: 'var(--amber)',
+      stroke: 'var(--surface)', 'stroke-width': 2 }, g);
+    el('circle', { cx: X(d.sharpe), cy: y, r: 5.5, fill: 'var(--blue)',
+      stroke: 'var(--surface)', 'stroke-width': 2 }, g);
+    el('text', { x: W - m.r + 14, y: y + 4, fill: 'var(--muted)', 'font-family': 'var(--mono)',
+      'font-size': 12 }, g).textContent = `Δ ${f(d.sharpe - d.synth)}`;
+    g.style.cursor = 'crosshair';
+    g.addEventListener('mousemove', e => show(e,
+      `<b>${d.inst}</b><br>real market &nbsp;&nbsp;&nbsp;&nbsp;${d.sharpe.toFixed(2)}<br>` +
+      `no structure &nbsp;&nbsp;${d.synth.toFixed(2)} ± ${d.synth_sd.toFixed(2)}<br>` +
+      `drift removed &nbsp;${d.zd.toFixed(2)}<br>difference &nbsp;&nbsp;&nbsp;&nbsp;${f(d.sharpe - d.synth)}`));
+    g.addEventListener('mouseleave', hide);
+  });
+  el('text', { x: W - m.r + 14, y: m.t - 14, fill: 'var(--faint)',
+    'font-family': 'var(--display)', 'font-size': 12, 'font-weight': 600,
+    'letter-spacing': '.08em' }, s).textContent = 'REAL − SYNTH';
+  document.getElementById('c2').appendChild(s);
+})();
+</script>
