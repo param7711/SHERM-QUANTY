@@ -11,6 +11,16 @@ OUT_DIR = os.path.join(HERE, "outputs")
 
 TIMEFRAME_ORDER = ["15m", "30m", "4h", "1d"]
 
+# One illustrative fan chart per asset class (its strongest showing) plus one
+# cautionary case, so the Monte Carlo section doesn't try to show all 80.
+CURATED_MC = [
+    ("USDJPY", "1d", "Best FX result, 1d"),
+    ("NASDAQ100", "1d", "Best equity-index result, 1d"),
+    ("GOLD", "4h", "Best commodity result, 4h"),
+    ("BTCUSD", "1d", "Best crypto result, 1d"),
+    ("USDCAD", "15m", "Cautionary case — FX at 15m"),
+]
+
 
 def _sanitize(obj):
     """Recursively replace NaN/Inf with None — Python's json module writes
@@ -70,15 +80,47 @@ def main():
             }
         heatmap_rows.append({"asset": asset, "asset_class": cls, "cells": cells})
 
+    # Grouped-by-timeframe view of the full grid, each group sorted by
+    # Sharpe descending — the organization the report actually shows.
+    grid_by_timeframe = []
+    for tf in TIMEFRAME_ORDER:
+        sub = ok[ok.timeframe == tf].sort_values("sharpe", ascending=False)
+        grid_by_timeframe.append({
+            "timeframe": tf,
+            "rows": sub.round(4).to_dict(orient="records"),
+        })
+
+    mc_paths_path = os.path.join(OUT_DIR, "mc_paths.json")
+    mc_paths = {}
+    if os.path.exists(mc_paths_path):
+        with open(mc_paths_path) as f:
+            mc_paths = json.load(f)
+
+    curated_mc = []
+    for asset, tf, label in CURATED_MC:
+        key = f"{asset}|{tf}"
+        detail = mc_paths.get(key)
+        row_match = ok[(ok.asset == asset) & (ok.timeframe == tf)]
+        if detail is None or row_match.empty:
+            continue
+        curated_mc.append({
+            "asset": asset, "timeframe": tf, "label": label,
+            "asset_class": row_match["asset_class"].iloc[0],
+            "actual_sharpe": round(float(row_match["sharpe"].iloc[0]), 3),
+            "detail": detail,
+        })
+
     payload = {
         "timeframe_order": TIMEFRAME_ORDER,
         "grid": ok.round(4).to_dict(orient="records"),
+        "grid_by_timeframe": grid_by_timeframe,
         "skipped": g[g["error"].notna()][["asset", "timeframe", "error"]].to_dict(orient="records"),
         "correlations": {"pooled": corr_pooled, "by_timeframe": corr_by_tf},
         "by_timeframe": by_tf.reset_index().round(4).to_dict(orient="records"),
         "by_asset_class": by_class.reset_index().round(4).to_dict(orient="records"),
         "by_vol_tier": by_voltier.round(4).to_dict(orient="records"),
         "heatmap": heatmap_rows,
+        "curated_mc": curated_mc,
         "totals": {"n_combinations": int(len(g)), "n_ok": int(len(ok)),
                     "n_assets": int(ok["asset"].nunique())},
     }

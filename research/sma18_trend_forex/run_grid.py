@@ -29,6 +29,7 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from monte_carlo import bootstrap_trade_mc
 from strategy import add_sma, characterize, performance_stats, run_strategy
 from universe import TIMEFRAMES, UNIVERSE
 
@@ -90,14 +91,15 @@ def load_bars(name: str, ticker: str, timeframe: str) -> pd.DataFrame:
     return df
 
 
-def run_one(name: str, meta: dict, timeframe: str) -> dict:
+def run_one(name: str, meta: dict, timeframe: str) -> tuple:
+    """Returns (row_dict, mc_detail_or_None)."""
     try:
         df = load_bars(name, meta["ticker"], timeframe)
     except Exception as e:
-        return {"error": f"download failed: {e}"}
+        return {"error": f"download failed: {e}"}, None
 
     if df.empty or len(df) < MIN_BARS:
-        return {"error": f"insufficient bars ({len(df)} < {MIN_BARS})"}
+        return {"error": f"insufficient bars ({len(df)} < {MIN_BARS})"}, None
 
     df = add_sma(df)
     char = characterize(df)
@@ -113,24 +115,41 @@ def run_one(name: str, meta: dict, timeframe: str) -> dict:
     row.update(char)
     row.update(perf)
     row["error"] = None
-    return row
+
+    mc_detail = None
+    closed = trades[~trades["open"]] if not trades.empty else trades
+    if not closed.empty:
+        mc = bootstrap_trade_mc(closed["return_pct"].values)
+        if mc is not None:
+            row["mc_p_profit"] = mc["p_profit"]
+            row["mc_return_p05"] = mc["final_return_p05"]
+            row["mc_return_p50"] = mc["final_return_p50"]
+            row["mc_return_p95"] = mc["final_return_p95"]
+            row["mc_max_dd_p50"] = mc["max_dd_p50"]
+            row["mc_max_dd_p95"] = mc["max_dd_p95"]
+            mc_detail = mc
+    return row, mc_detail
 
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     rows = []
+    mc_paths = {}
     for name, meta in UNIVERSE.items():
         for tf in TIMEFRAMES:
             print(f"  {name:10s} {tf:4s} ...", end=" ", flush=True)
-            r = run_one(name, meta, tf)
+            r, mc = run_one(name, meta, tf)
             if r.get("error"):
                 print("SKIP:", r["error"])
                 rows.append({"asset": name, "asset_class": meta["asset_class"],
                               "expected_vol_tier": meta["vol_tier"], "timeframe": tf,
                               "error": r["error"]})
             else:
-                print(f"n_trades={r['n_trades']:>4d}  sharpe={r['sharpe']:+.2f}")
+                mc_note = f"  MC p_profit={r['mc_p_profit']:.2f}" if "mc_p_profit" in r else ""
+                print(f"n_trades={r['n_trades']:>4d}  sharpe={r['sharpe']:+.2f}{mc_note}")
                 rows.append(r)
+                if mc is not None:
+                    mc_paths[f"{name}|{tf}"] = mc
 
     grid = pd.DataFrame(rows)
     ok = grid[grid["error"].isna()].copy()
@@ -151,6 +170,8 @@ def main():
     )
 
     grid.to_csv(os.path.join(OUT_DIR, "grid_summary.csv"), index=False)
+    with open(os.path.join(OUT_DIR, "mc_paths.json"), "w") as f:
+        json.dump(mc_paths, f, default=str)
 
     by_tf = ok.groupby("timeframe")[["sharpe", "cagr_pct", "win_rate",
                                       "max_drawdown_pct", "n_trades"]].mean()
