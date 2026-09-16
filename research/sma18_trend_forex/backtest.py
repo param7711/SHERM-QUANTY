@@ -23,6 +23,7 @@ Outputs: research/sma18_trend_forex/outputs/{summary.csv, trades.csv, results.js
 
 import json
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -30,12 +31,14 @@ import pandas as pd
 import yfinance as yf
 
 warnings.filterwarnings("ignore")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from strategy import (SMA_PERIOD, add_sma, characterize, max_drawdown,
+                       performance_stats, run_strategy)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(HERE, "data")
 OUT_DIR = os.path.join(HERE, "outputs")
 
-SMA_PERIOD = 18
 START_DATE = "2015-01-01"
 END_DATE = pd.Timestamp.today().strftime("%Y-%m-%d")
 
@@ -85,139 +88,11 @@ def load_pair(name: str, ticker: str) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Pair characterization — volatility & trend persistence
-# ---------------------------------------------------------------------------
-
-def characterize(df: pd.DataFrame) -> dict:
-    log_ret = np.log(df["close"] / df["close"].shift(1)).dropna()
-    ann_vol = float(log_ret.std() * np.sqrt(252))
-
-    valid = df["sma18"].notna()
-    above = (df["close"] > df["sma18"])[valid]
-    # Run-length of consecutive days spent above the SMA (the state that
-    # defines "trend sustains" for a long-only SMA-touch system).
-    run_id = (above != above.shift(1)).cumsum()
-    run_lengths = above.groupby(run_id).agg(["sum", "size"])
-    up_runs = run_lengths[above.groupby(run_id).first()]["size"]
-    avg_up_run = float(up_runs.mean()) if len(up_runs) else 0.0
-    pct_time_above = float(above.mean())
-
-    return {
-        "ann_vol": ann_vol,
-        "avg_up_run_days": avg_up_run,
-        "pct_time_above_sma18": pct_time_above,
-        "n_up_runs": int(len(up_runs)),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Strategy
-# ---------------------------------------------------------------------------
-
-def run_strategy(df: pd.DataFrame) -> tuple:
-    """Returns (trades_df, equity_curve[pd.Series indexed by date, base=1.0])."""
-    close, open_, low, high, sma = (df["close"], df["open"], df["low"],
-                                     df["high"], df["sma18"])
-
-    trades = []
-    equity = np.empty(len(df))
-    equity[0] = 1.0
-
-    in_position = False
-    entry_price = entry_date = None
-
-    for i in range(1, len(df)):
-        prev_close = close.iloc[i - 1]
-
-        if in_position:
-            sma_now = sma.iloc[i]
-            exit_price = None
-            if pd.notna(sma_now):
-                if open_.iloc[i] <= sma_now:
-                    exit_price = open_.iloc[i]          # gapped through at the open
-                elif low.iloc[i] <= sma_now <= high.iloc[i]:
-                    exit_price = sma_now                  # intrabar touch
-
-            if exit_price is not None:
-                day_ret = exit_price / prev_close - 1
-                equity[i] = equity[i - 1] * (1 + day_ret)
-                trades.append({
-                    "entry_date": entry_date, "exit_date": df.index[i],
-                    "entry_price": entry_price, "exit_price": exit_price,
-                    "return_pct": (exit_price / entry_price - 1) * 100,
-                    "holding_days": (df.index[i] - entry_date).days,
-                    "open": False,
-                })
-                in_position = False
-            else:
-                day_ret = close.iloc[i] / prev_close - 1
-                equity[i] = equity[i - 1] * (1 + day_ret)
-        else:
-            equity[i] = equity[i - 1]
-            sma_now, sma_prev = sma.iloc[i], sma.iloc[i - 1]
-            if pd.notna(sma_now) and pd.notna(sma_prev):
-                if close.iloc[i] > sma_now and close.iloc[i - 1] > sma_prev:
-                    in_position = True
-                    entry_price = close.iloc[i]
-                    entry_date = df.index[i]
-
-    if in_position:
-        trades.append({
-            "entry_date": entry_date, "exit_date": df.index[-1],
-            "entry_price": entry_price, "exit_price": close.iloc[-1],
-            "return_pct": (close.iloc[-1] / entry_price - 1) * 100,
-            "holding_days": (df.index[-1] - entry_date).days,
-            "open": True,
-        })
-
-    equity_curve = pd.Series(equity, index=df.index)
-    return pd.DataFrame(trades), equity_curve
-
-
-def max_drawdown(equity: pd.Series) -> float:
-    roll_max = equity.cummax()
-    dd = (equity - roll_max) / roll_max
-    return float(abs(dd.min()))
-
-
-def performance_stats(trades: pd.DataFrame, equity: pd.Series) -> dict:
-    daily_ret = equity.pct_change().dropna()
-    closed = trades[~trades["open"]] if not trades.empty else trades
-    n_years = (equity.index[-1] - equity.index[0]).days / 365.25
-
-    if closed.empty:
-        win_rate = avg_ret = median_ret = profit_factor = np.nan
-    else:
-        wins = closed[closed["return_pct"] > 0]["return_pct"]
-        losses = closed[closed["return_pct"] <= 0]["return_pct"]
-        win_rate = len(wins) / len(closed)
-        avg_ret = float(closed["return_pct"].mean())
-        median_ret = float(closed["return_pct"].median())
-        profit_factor = (wins.sum() / abs(losses.sum())
-                          if losses.sum() != 0 else np.inf)
-
-    sharpe = (daily_ret.mean() / daily_ret.std() * np.sqrt(252)
-              if daily_ret.std() > 0 else 0.0)
-    cagr = (equity.iloc[-1] ** (1 / n_years) - 1) if n_years > 0 else np.nan
-
-    return {
-        "n_trades": int(len(closed)),
-        "n_open_at_end": int(len(trades) - len(closed)),
-        "win_rate": win_rate,
-        "avg_return_pct": avg_ret,
-        "median_return_pct": median_ret,
-        "profit_factor": profit_factor,
-        "worst_trade_pct": float(closed["return_pct"].min()) if not closed.empty else np.nan,
-        "best_trade_pct": float(closed["return_pct"].max()) if not closed.empty else np.nan,
-        "avg_holding_days": float(closed["holding_days"].mean()) if not closed.empty else np.nan,
-        "total_return_pct": float((equity.iloc[-1] - 1) * 100),
-        "cagr_pct": float(cagr * 100) if pd.notna(cagr) else np.nan,
-        "ann_vol_of_equity_pct": float(daily_ret.std() * np.sqrt(252) * 100),
-        "sharpe": float(sharpe),
-        "max_drawdown_pct": float(max_drawdown(equity) * 100),
-    }
-
+# characterize(), run_strategy(), performance_stats(), max_drawdown() now
+# live in strategy.py, shared with the multi-asset/multi-timeframe grid
+# in run_grid.py. Daily bars == daily "bars", so the generic bar-based
+# field names from strategy.py are aliased back to the day-based names
+# this script's report_data.json / the published artifact already use.
 
 # ---------------------------------------------------------------------------
 # Main
@@ -232,12 +107,13 @@ def main():
     rows = []
 
     for name, ticker in PAIRS.items():
-        df = load_pair(name, ticker)
-        df["sma18"] = df["close"].rolling(SMA_PERIOD).mean()
+        df = add_sma(load_pair(name, ticker))
 
         char = characterize(df)
+        char["avg_up_run_days"] = char.pop("avg_up_run_bars")
         trades, equity = run_strategy(df)
         perf = performance_stats(trades, equity)
+        perf["avg_holding_days"] = perf.pop("avg_holding_bars")
 
         trades = trades.copy()
         trades["pair"] = name

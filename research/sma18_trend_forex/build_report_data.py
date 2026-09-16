@@ -1,6 +1,7 @@
 """Builds the compact JSON payload consumed by the report artifact."""
 
 import json
+import math
 import os
 
 import numpy as np
@@ -8,6 +9,19 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "outputs")
+
+
+def _sanitize(obj):
+    """Recursively replace NaN/Inf with None — Python's json module writes
+    the literal (invalid-JSON) tokens NaN/Infinity by default, which then
+    fail JSON.parse in the browser."""
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
 
 
 def main():
@@ -43,7 +57,7 @@ def main():
 
     out_path = os.path.join(OUT_DIR, "report_data.json")
     with open(out_path, "w") as f:
-        json.dump(payload, f, default=str)
+        json.dump(_sanitize(payload), f, default=str)
     print(f"wrote {out_path} ({os.path.getsize(out_path)} bytes)")
 
 

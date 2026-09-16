@@ -22,3 +22,9 @@ database/rl_*.json
 research/sma18_trend_forex/data/*.parquet
 research/sma18_trend_forex/outputs/*.csv
 research/sma18_trend_forex/outputs/*.json
+research/sma18_trend_forex/data/15m/*.parquet
+research/sma18_trend_forex/data/30m/*.parquet
+research/sma18_trend_forex/data/4h/*.parquet
+research/sma18_trend_forex/data/1d/*.parquet
+research/sma18_trend_forex/outputs/grid_*.csv
+research/sma18_trend_forex/outputs/grid_*.json
