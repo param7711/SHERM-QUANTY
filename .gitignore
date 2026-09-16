@@ -17,3 +17,8 @@ outputs/charts/*.png
 database/rl_*.npz
 database/rl_*.pkl
 database/rl_*.json
+
+# SMA18 trend-forex research: FX parquet cache + generated outputs
+research/sma18_trend_forex/data/*.parquet
+research/sma18_trend_forex/outputs/*.csv
+research/sma18_trend_forex/outputs/*.json
