@@ -19,18 +19,18 @@ TIMEFRAME_ORDER = ["15m", "30m", "4h", "1d"]
 # cautionary case, so the Monte Carlo section doesn't try to show all 80.
 CURATED_MC = {
     "long": [
-        ("USDJPY", "1d", "Best FX result, 1d"),
-        ("NASDAQ100", "1d", "Best equity-index result, 1d"),
-        ("GOLD", "4h", "Best commodity result, 4h"),
-        ("BTCUSD", "1d", "Best crypto result, 1d"),
-        ("USDCAD", "15m", "Cautionary case — FX at 15m"),
+        ("BTCUSD", "1d", "Best crypto result on the longest sample"),
+        ("GOLD", "1d", "Deepest commodity history (2000-)"),
+        ("ETHUSD", "1d", "Second crypto, independent history"),
+        ("CRUDE", "1d", "Energy, 26 years of daily bars"),
+        ("COFFEE", "30m", "Cautionary case — worst cell in the grid"),
     ],
     "both": [
-        ("USDJPY", "30m", "Best long+short result overall"),
-        ("USDJPY", "1d", "Same pick as Part 2, for comparison"),
-        ("BTCUSD", "1d", "Same pick as Part 2, for comparison"),
-        ("NASDAQ100", "1d", "Same pick as Part 2, for comparison"),
-        ("USDCAD", "15m", "Cautionary case — even worse with shorts added"),
+        ("BTCUSD", "1d", "Same pick as long-only, for comparison"),
+        ("GOLD", "1d", "Same pick as long-only, for comparison"),
+        ("ETHUSD", "1d", "Crypto with shorts added"),
+        ("CRUDE", "1d", "Commodity with shorts added"),
+        ("COFFEE", "30m", "Cautionary case, shorts added"),
     ],
 }
 

@@ -96,20 +96,27 @@ def run_strategy(df: pd.DataFrame, direction: str = "long") -> tuple:
     for i in range(1, len(df)):
         prev_close = close.iloc[i - 1]
         sma_now = sma.iloc[i]
+        sma_prev = sma.iloc[i - 1]
 
         if side != 0:
+            # Exit uses sma_prev, not sma_now: the SMA level a resting stop
+            # would actually sit at during bar i is the one finalized at
+            # bar i-1's close. sma_now only exists once bar i itself
+            # closes, so testing bar i's open/low/high (which all occur
+            # before that close) against sma_now would use information
+            # not yet available at the moment of the touch — lookahead.
             exit_price = None
-            if pd.notna(sma_now):
+            if pd.notna(sma_prev):
                 if side == 1:
-                    if open_.iloc[i] <= sma_now:
+                    if open_.iloc[i] <= sma_prev:
                         exit_price = open_.iloc[i]
-                    elif low.iloc[i] <= sma_now <= high.iloc[i]:
-                        exit_price = sma_now
+                    elif low.iloc[i] <= sma_prev <= high.iloc[i]:
+                        exit_price = sma_prev
                 else:  # side == -1
-                    if open_.iloc[i] >= sma_now:
+                    if open_.iloc[i] >= sma_prev:
                         exit_price = open_.iloc[i]
-                    elif low.iloc[i] <= sma_now <= high.iloc[i]:
-                        exit_price = sma_now
+                    elif low.iloc[i] <= sma_prev <= high.iloc[i]:
+                        exit_price = sma_prev
 
             if exit_price is not None:
                 day_ret = (exit_price / prev_close - 1) * side
@@ -128,7 +135,8 @@ def run_strategy(df: pd.DataFrame, direction: str = "long") -> tuple:
                 equity[i] = equity[i - 1] * (1 + day_ret)
         else:
             equity[i] = equity[i - 1]
-            sma_prev = sma.iloc[i - 1]
+            # Entry is decided and executed at bar i's close, so using
+            # sma_now (which needs exactly that close) is not lookahead.
             if pd.notna(sma_now) and pd.notna(sma_prev):
                 if allow_long and close.iloc[i] > sma_now and close.iloc[i - 1] > sma_prev:
                     side, entry_price, entry_date, entry_idx = 1, close.iloc[i], df.index[i], i
@@ -147,6 +155,74 @@ def run_strategy(df: pd.DataFrame, direction: str = "long") -> tuple:
 
     equity_curve = pd.Series(equity, index=df.index)
     return pd.DataFrame(trades), equity_curve
+
+
+def run_strategy_arrays(open_, high, low, close, sma, direction: str = "long"):
+    """Array-only twin of run_strategy(), for simulation workloads.
+
+    Identical rule, identical arithmetic — it just skips pandas indexing,
+    which dominates runtime when the strategy is re-run thousands of times
+    over synthetic series. test_engine.test_fast_engine_matches_reference
+    asserts the two produce the same trades and the same equity curve on
+    real data; that equivalence is what makes it safe to use here.
+
+    Returns (trade_returns_pct, holding_bars, sides, equity).
+    """
+    allow_long = direction in ("long", "both")
+    allow_short = direction in ("short", "both")
+    n = len(close)
+
+    equity = np.empty(n)
+    equity[0] = 1.0
+    rets, holds, sides = [], [], []
+
+    side = 0
+    entry_price = 0.0
+    entry_idx = 0
+
+    for i in range(1, n):
+        prev_close = close[i - 1]
+        sma_now = sma[i]
+        sma_prev = sma[i - 1]
+
+        if side != 0:
+            exit_price = np.nan
+            if sma_prev == sma_prev:  # not NaN
+                if side == 1:
+                    if open_[i] <= sma_prev:
+                        exit_price = open_[i]
+                    elif low[i] <= sma_prev <= high[i]:
+                        exit_price = sma_prev
+                else:
+                    if open_[i] >= sma_prev:
+                        exit_price = open_[i]
+                    elif low[i] <= sma_prev <= high[i]:
+                        exit_price = sma_prev
+
+            if exit_price == exit_price:  # not NaN
+                equity[i] = equity[i - 1] * (1 + (exit_price / prev_close - 1) * side)
+                rets.append((exit_price / entry_price - 1) * side * 100)
+                holds.append(i - entry_idx)
+                sides.append(side)
+                side = 0
+            else:
+                equity[i] = equity[i - 1] * (1 + (close[i] / prev_close - 1) * side)
+        else:
+            equity[i] = equity[i - 1]
+            if sma_now == sma_now and sma_prev == sma_prev:
+                if allow_long and close[i] > sma_now and close[i - 1] > sma_prev:
+                    side, entry_price, entry_idx = 1, close[i], i
+                elif allow_short and close[i] < sma_now and close[i - 1] < sma_prev:
+                    side, entry_price, entry_idx = -1, close[i], i
+
+    return (np.asarray(rets, dtype=float), np.asarray(holds, dtype=float),
+            np.asarray(sides, dtype=float), equity)
+
+
+def sharpe_from_equity(equity: np.ndarray, bpy: float) -> float:
+    ret = np.diff(equity) / equity[:-1]
+    sd = ret.std()
+    return float(ret.mean() / sd * np.sqrt(bpy)) if sd > 0 else 0.0
 
 
 def max_drawdown(equity: pd.Series) -> float:
