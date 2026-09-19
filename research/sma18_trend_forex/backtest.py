@@ -39,7 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(HERE, "data")
 OUT_DIR = os.path.join(HERE, "outputs")
 
-START_DATE = "2015-01-01"
+START_DATE = "1990-01-01"  # yfinance clips to each ticker's actual start
 END_DATE = pd.Timestamp.today().strftime("%Y-%m-%d")
 
 # Majors + liquid crosses — broad enough to let the ranking step

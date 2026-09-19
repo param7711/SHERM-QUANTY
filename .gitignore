@@ -32,3 +32,8 @@ research/sma18_multiframe/data/*.parquet
 research/sma18_multiframe/outputs/*.csv
 research/sma18_multiframe/outputs/*.json
 research/sma18_trend_forex/outputs/mc_paths.json
+research/sma18_trend_forex/outputs/grid_summary_both.csv
+research/sma18_trend_forex/outputs/grid_report_data_both.json
+research/sma18_trend_forex/outputs/grid_results_both.json
+research/sma18_trend_forex/outputs/mc_paths_both.json
+research/sma18_trend_forex/outputs/headtohead_data.json

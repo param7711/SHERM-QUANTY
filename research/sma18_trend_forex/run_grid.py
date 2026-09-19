@@ -14,8 +14,14 @@ days; 4h bars are built by resampling 1h bars, capped at the trailing
 therefore a much smaller sample than 4h/1d — flagged in the output,
 not hidden.
 
-Usage: python research/sma18_trend_forex/run_grid.py
-Outputs: research/sma18_trend_forex/outputs/{grid_summary.csv, grid_results.json}
+Usage: python research/sma18_trend_forex/run_grid.py [long|short|both]
+  (default: long — the original long-only rule; 'both' is the long+short
+  reversal variant, entering short on two closes below the SMA18 the
+  same way it enters long on two closes above it)
+Outputs: research/sma18_trend_forex/outputs/{grid_summary[_SUFFIX].csv,
+         grid_results[_SUFFIX].json, mc_paths[_SUFFIX].json}
+  where SUFFIX is empty for 'long' (keeps the existing Part 2 pipeline's
+  filenames stable) and the direction name otherwise.
 """
 
 import json
@@ -37,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(HERE, "data")
 OUT_DIR = os.path.join(HERE, "outputs")
 
-DAILY_START = "2015-01-01"
+DAILY_START = "1990-01-01"  # yfinance clips to each ticker's actual start
 DAILY_END = pd.Timestamp.today().strftime("%Y-%m-%d")
 
 # Minimum bars required for the SMA18 rule + a usable sample; below this
@@ -91,7 +97,7 @@ def load_bars(name: str, ticker: str, timeframe: str) -> pd.DataFrame:
     return df
 
 
-def run_one(name: str, meta: dict, timeframe: str) -> tuple:
+def run_one(name: str, meta: dict, timeframe: str, direction: str = "long") -> tuple:
     """Returns (row_dict, mc_detail_or_None)."""
     try:
         df = load_bars(name, meta["ticker"], timeframe)
@@ -103,17 +109,20 @@ def run_one(name: str, meta: dict, timeframe: str) -> tuple:
 
     df = add_sma(df)
     char = characterize(df)
-    trades, equity = run_strategy(df)
+    trades, equity = run_strategy(df, direction=direction)
     perf = performance_stats(trades, equity)
 
     row = {
         "asset": name, "asset_class": meta["asset_class"],
         "expected_vol_tier": meta["vol_tier"], "timeframe": timeframe,
-        "n_bars": len(df),
+        "direction": direction, "n_bars": len(df),
         "start": df.index[0].isoformat(), "end": df.index[-1].isoformat(),
     }
     row.update(char)
     row.update(perf)
+    if direction == "both" and not trades.empty:
+        row["n_long_trades"] = int((trades["side"] == "long").sum())
+        row["n_short_trades"] = int((trades["side"] == "short").sum())
     row["error"] = None
 
     mc_detail = None
@@ -131,14 +140,15 @@ def run_one(name: str, meta: dict, timeframe: str) -> tuple:
     return row, mc_detail
 
 
-def main():
+def main(direction: str = "long"):
+    suffix = "" if direction == "long" else f"_{direction}"
     os.makedirs(OUT_DIR, exist_ok=True)
     rows = []
     mc_paths = {}
     for name, meta in UNIVERSE.items():
         for tf in TIMEFRAMES:
             print(f"  {name:10s} {tf:4s} ...", end=" ", flush=True)
-            r, mc = run_one(name, meta, tf)
+            r, mc = run_one(name, meta, tf, direction=direction)
             if r.get("error"):
                 print("SKIP:", r["error"])
                 rows.append({"asset": name, "asset_class": meta["asset_class"],
@@ -169,8 +179,8 @@ def main():
         on=["asset", "timeframe"], how="left"
     )
 
-    grid.to_csv(os.path.join(OUT_DIR, "grid_summary.csv"), index=False)
-    with open(os.path.join(OUT_DIR, "mc_paths.json"), "w") as f:
+    grid.to_csv(os.path.join(OUT_DIR, f"grid_summary{suffix}.csv"), index=False)
+    with open(os.path.join(OUT_DIR, f"mc_paths{suffix}.json"), "w") as f:
         json.dump(mc_paths, f, default=str)
 
     by_tf = ok.groupby("timeframe")[["sharpe", "cagr_pct", "win_rate",
@@ -187,12 +197,12 @@ def main():
         "by_vol_tier": by_voltier.reset_index().to_dict(orient="records"),
         "n_combinations": len(grid), "n_successful": len(ok), "n_skipped": len(grid) - len(ok),
     }
-    with open(os.path.join(OUT_DIR, "grid_results.json"), "w") as f:
+    with open(os.path.join(OUT_DIR, f"grid_results{suffix}.json"), "w") as f:
         json.dump(results, f, indent=2, default=str)
 
     pd.set_option("display.width", 180)
     pd.set_option("display.max_columns", 30)
-    print(f"\n=== {len(ok)}/{len(grid)} combinations produced a result ===\n")
+    print(f"\n=== direction={direction}: {len(ok)}/{len(grid)} combinations produced a result ===\n")
 
     print("=== Mean performance by timeframe ===")
     print(by_tf.round(3))
@@ -207,4 +217,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _direction = sys.argv[1] if len(sys.argv) > 1 else "long"
+    main(_direction)

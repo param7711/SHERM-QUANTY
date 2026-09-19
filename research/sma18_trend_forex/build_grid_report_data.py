@@ -1,8 +1,12 @@
-"""Builds the compact JSON payload for the timeframe x asset-class grid section."""
+"""Builds the compact JSON payload for the timeframe x asset-class grid section.
+
+Usage: python build_grid_report_data.py [long|both]
+"""
 
 import json
 import math
 import os
+import sys
 
 import pandas as pd
 
@@ -13,13 +17,22 @@ TIMEFRAME_ORDER = ["15m", "30m", "4h", "1d"]
 
 # One illustrative fan chart per asset class (its strongest showing) plus one
 # cautionary case, so the Monte Carlo section doesn't try to show all 80.
-CURATED_MC = [
-    ("USDJPY", "1d", "Best FX result, 1d"),
-    ("NASDAQ100", "1d", "Best equity-index result, 1d"),
-    ("GOLD", "4h", "Best commodity result, 4h"),
-    ("BTCUSD", "1d", "Best crypto result, 1d"),
-    ("USDCAD", "15m", "Cautionary case — FX at 15m"),
-]
+CURATED_MC = {
+    "long": [
+        ("USDJPY", "1d", "Best FX result, 1d"),
+        ("NASDAQ100", "1d", "Best equity-index result, 1d"),
+        ("GOLD", "4h", "Best commodity result, 4h"),
+        ("BTCUSD", "1d", "Best crypto result, 1d"),
+        ("USDCAD", "15m", "Cautionary case — FX at 15m"),
+    ],
+    "both": [
+        ("USDJPY", "30m", "Best long+short result overall"),
+        ("USDJPY", "1d", "Same pick as Part 2, for comparison"),
+        ("BTCUSD", "1d", "Same pick as Part 2, for comparison"),
+        ("NASDAQ100", "1d", "Same pick as Part 2, for comparison"),
+        ("USDCAD", "15m", "Cautionary case — even worse with shorts added"),
+    ],
+}
 
 
 def _sanitize(obj):
@@ -35,8 +48,9 @@ def _sanitize(obj):
     return obj
 
 
-def main():
-    g = pd.read_csv(os.path.join(OUT_DIR, "grid_summary.csv"))
+def main(direction: str = "long"):
+    suffix = "" if direction == "long" else f"_{direction}"
+    g = pd.read_csv(os.path.join(OUT_DIR, f"grid_summary{suffix}.csv"))
     ok = g[g["error"].isna()].copy().drop(columns=["error"])
 
     corr_by_tf = {
@@ -90,14 +104,14 @@ def main():
             "rows": sub.round(4).to_dict(orient="records"),
         })
 
-    mc_paths_path = os.path.join(OUT_DIR, "mc_paths.json")
+    mc_paths_path = os.path.join(OUT_DIR, f"mc_paths{suffix}.json")
     mc_paths = {}
     if os.path.exists(mc_paths_path):
         with open(mc_paths_path) as f:
             mc_paths = json.load(f)
 
     curated_mc = []
-    for asset, tf, label in CURATED_MC:
+    for asset, tf, label in CURATED_MC[direction]:
         key = f"{asset}|{tf}"
         detail = mc_paths.get(key)
         row_match = ok[(ok.asset == asset) & (ok.timeframe == tf)]
@@ -111,6 +125,7 @@ def main():
         })
 
     payload = {
+        "direction": direction,
         "timeframe_order": TIMEFRAME_ORDER,
         "grid": ok.round(4).to_dict(orient="records"),
         "grid_by_timeframe": grid_by_timeframe,
@@ -125,11 +140,12 @@ def main():
                     "n_assets": int(ok["asset"].nunique())},
     }
 
-    out_path = os.path.join(OUT_DIR, "grid_report_data.json")
+    out_path = os.path.join(OUT_DIR, f"grid_report_data{suffix}.json")
     with open(out_path, "w") as f:
         json.dump(_sanitize(payload), f, default=str)
     print(f"wrote {out_path} ({os.path.getsize(out_path)} bytes)")
 
 
 if __name__ == "__main__":
-    main()
+    _direction = sys.argv[1] if len(sys.argv) > 1 else "long"
+    main(_direction)

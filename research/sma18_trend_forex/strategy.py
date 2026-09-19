@@ -1,15 +1,23 @@
 """
-Shared SMA18 long-trend engine — timeframe- and asset-agnostic.
+Shared SMA18 trend engine — timeframe- and asset-agnostic.
 
-Entry: close > SMA18 on two consecutive candles -> buy at the close of
-       the second candle.
-Exit:  flat as soon as price touches the SMA18 again (intrabar low <=
-       SMA18, or the open itself gapped through it).
-Long only, at most one open position at a time.
+Long side:  close > SMA18 on two consecutive candles -> buy at the close
+            of the second candle; flat as soon as price touches the
+            SMA18 again from above (intrabar high >= SMA18, or the open
+            itself gapped through it).
+Short side (mirror image): close < SMA18 on two consecutive candles ->
+            sell at the close of the second candle; flat as soon as
+            price touches the SMA18 again from below.
 
-Used by both the original daily-FX backtest (backtest.py) and the
-multi-asset / multi-timeframe grid (run_grid.py) so the rule is defined
-in exactly one place.
+`direction` selects which side(s) run_strategy() trades:
+  'long'  — long only (the original rule).
+  'short' — short only.
+  'both'  — long+short reversal system: flat waits for either signal,
+            at most one open position (long or short) at a time.
+
+Used by the daily-FX backtest (backtest.py) and the multi-asset /
+multi-timeframe grid (run_grid.py) so the rule is defined in exactly
+one place.
 """
 
 import numpy as np
@@ -34,6 +42,13 @@ def bars_per_year(index: pd.DatetimeIndex) -> float:
     return len(index) / (span_days / 365.25)
 
 
+def _run_lengths(mask: pd.Series) -> pd.Series:
+    run_id = (mask != mask.shift(1)).cumsum()
+    sizes = mask.groupby(run_id).agg("size")
+    is_true_run = mask.groupby(run_id).first()
+    return sizes[is_true_run]
+
+
 def characterize(df: pd.DataFrame) -> dict:
     log_ret = np.log(df["close"] / df["close"].shift(1)).dropna()
     bpy = bars_per_year(df.index)
@@ -41,23 +56,33 @@ def characterize(df: pd.DataFrame) -> dict:
 
     valid = df["sma18"].notna()
     above = (df["close"] > df["sma18"])[valid]
-    run_id = (above != above.shift(1)).cumsum()
-    run_lengths = above.groupby(run_id).agg(["sum", "size"])
-    up_runs = run_lengths[above.groupby(run_id).first()]["size"]
-    avg_up_run = float(up_runs.mean()) if len(up_runs) else 0.0
-    pct_time_above = float(above.mean())
+    below = (df["close"] < df["sma18"])[valid]
+
+    up_runs = _run_lengths(above)
+    down_runs = _run_lengths(below)
 
     return {
         "ann_vol": ann_vol,
-        "avg_up_run_bars": avg_up_run,
-        "pct_time_above_sma18": pct_time_above,
+        "avg_up_run_bars": float(up_runs.mean()) if len(up_runs) else 0.0,
+        "avg_down_run_bars": float(down_runs.mean()) if len(down_runs) else 0.0,
+        "pct_time_above_sma18": float(above.mean()),
         "n_up_runs": int(len(up_runs)),
+        "n_down_runs": int(len(down_runs)),
         "bars_per_year": bpy,
     }
 
 
-def run_strategy(df: pd.DataFrame) -> tuple:
-    """Returns (trades_df, equity_curve[pd.Series indexed by date, base=1.0])."""
+def run_strategy(df: pd.DataFrame, direction: str = "long") -> tuple:
+    """Returns (trades_df, equity_curve[pd.Series indexed by date, base=1.0]).
+
+    direction: 'long', 'short', or 'both' (long+short reversal system,
+    one open position at a time).
+    """
+    if direction not in ("long", "short", "both"):
+        raise ValueError(f"unknown direction {direction!r}")
+    allow_long = direction in ("long", "both")
+    allow_short = direction in ("short", "both")
+
     close, open_, low, high, sma = (df["close"], df["open"], df["low"],
                                      df["high"], df["sma18"])
 
@@ -65,50 +90,57 @@ def run_strategy(df: pd.DataFrame) -> tuple:
     equity = np.empty(len(df))
     equity[0] = 1.0
 
-    in_position = False
-    entry_price = entry_date = None
+    side = 0            # 0 flat, +1 long, -1 short
+    entry_price = entry_date = entry_idx = None
 
     for i in range(1, len(df)):
         prev_close = close.iloc[i - 1]
+        sma_now = sma.iloc[i]
 
-        if in_position:
-            sma_now = sma.iloc[i]
+        if side != 0:
             exit_price = None
             if pd.notna(sma_now):
-                if open_.iloc[i] <= sma_now:
-                    exit_price = open_.iloc[i]          # gapped through at the open
-                elif low.iloc[i] <= sma_now <= high.iloc[i]:
-                    exit_price = sma_now                  # intrabar touch
+                if side == 1:
+                    if open_.iloc[i] <= sma_now:
+                        exit_price = open_.iloc[i]
+                    elif low.iloc[i] <= sma_now <= high.iloc[i]:
+                        exit_price = sma_now
+                else:  # side == -1
+                    if open_.iloc[i] >= sma_now:
+                        exit_price = open_.iloc[i]
+                    elif low.iloc[i] <= sma_now <= high.iloc[i]:
+                        exit_price = sma_now
 
             if exit_price is not None:
-                day_ret = exit_price / prev_close - 1
+                day_ret = (exit_price / prev_close - 1) * side
                 equity[i] = equity[i - 1] * (1 + day_ret)
                 trades.append({
                     "entry_date": entry_date, "exit_date": df.index[i],
                     "entry_price": entry_price, "exit_price": exit_price,
-                    "return_pct": (exit_price / entry_price - 1) * 100,
+                    "side": "long" if side == 1 else "short",
+                    "return_pct": (exit_price / entry_price - 1) * side * 100,
                     "holding_bars": i - entry_idx,
                     "open": False,
                 })
-                in_position = False
+                side = 0
             else:
-                day_ret = close.iloc[i] / prev_close - 1
+                day_ret = (close.iloc[i] / prev_close - 1) * side
                 equity[i] = equity[i - 1] * (1 + day_ret)
         else:
             equity[i] = equity[i - 1]
-            sma_now, sma_prev = sma.iloc[i], sma.iloc[i - 1]
+            sma_prev = sma.iloc[i - 1]
             if pd.notna(sma_now) and pd.notna(sma_prev):
-                if close.iloc[i] > sma_now and close.iloc[i - 1] > sma_prev:
-                    in_position = True
-                    entry_price = close.iloc[i]
-                    entry_date = df.index[i]
-                    entry_idx = i
+                if allow_long and close.iloc[i] > sma_now and close.iloc[i - 1] > sma_prev:
+                    side, entry_price, entry_date, entry_idx = 1, close.iloc[i], df.index[i], i
+                elif allow_short and close.iloc[i] < sma_now and close.iloc[i - 1] < sma_prev:
+                    side, entry_price, entry_date, entry_idx = -1, close.iloc[i], df.index[i], i
 
-    if in_position:
+    if side != 0:
         trades.append({
             "entry_date": entry_date, "exit_date": df.index[-1],
             "entry_price": entry_price, "exit_price": close.iloc[-1],
-            "return_pct": (close.iloc[-1] / entry_price - 1) * 100,
+            "side": "long" if side == 1 else "short",
+            "return_pct": (close.iloc[-1] / entry_price - 1) * side * 100,
             "holding_bars": len(df) - 1 - entry_idx,
             "open": True,
         })
