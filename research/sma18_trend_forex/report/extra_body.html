@@ -1,0 +1,153 @@
+  <section id="montecarlo-explained" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">What Monte Carlo actually is, and what it can and cannot tell you</p>
+      <h1>Three different Monte Carlos, answering three different questions</h1>
+      <div class="rule-line">
+        A Monte Carlo simulation means: <b>run the thing thousands of times with the randomness
+        put back in, and look at the whole distribution of outcomes instead of the single one
+        that happened.</b> A backtest gives you one history. That number is a sample of size one.
+        Monte Carlo turns it into a distribution you can ask questions of &mdash; but
+        <b>what you randomize decides what question you asked</b>, and the three methods on this
+        page are not interchangeable.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel caveats">
+    <h2>The three methods, in plain terms</h2>
+    <ul>
+      <li><b>1. Trade-order bootstrap (the fan charts further down) &mdash; "did I just get lucky
+        with the order?"</b> Take the trades that actually happened, shuffle and resample them
+        2,000 times, replay each. The <i>set</i> of wins and losses is fixed; only the sequence
+        changes. This is the weakest of the three, because it can never produce a trade the
+        strategy didn't already make. It answers a narrow question: how much of the final number
+        came down to the luck of ordering.</li>
+      <li><b>2. Markov synthetic markets (the histograms at the top) &mdash; "is there an edge at
+        all?"</b> Here the <i>market itself</i> is randomized, not the trades. A fresh price series
+        is generated with the same return distribution, volatility clustering and one-step memory
+        as the real asset, then the strategy is run on it from scratch, generating its own signals
+        and its own trades. This is the strong test, and it is the one that produced the p-values
+        &mdash; because a rule with no edge will still make money on a series that drifts upward,
+        and only this method controls for that.</li>
+      <li><b>3. Forward projection (the section below) &mdash; "what might the next five years look
+        like?"</b> Draw future trades from the historical distribution and compound them forward
+        10,000 times. This does <b>not</b> test whether the edge is real &mdash; it assumes it is,
+        and asks what follows. Its entire value is in the <i>spread</i>: the gap between the 5th and
+        95th percentile is the honest width of the uncertainty, and the drawdown percentiles tell
+        you what you would have to sit through.</li>
+      <li><b>The trap to avoid:</b> a Monte Carlo cannot generate a risk that is absent from its
+        input. None of these can produce an exchange failure, a regime that never occurred in the
+        sample, or the rule simply ceasing to work. A projection that says "88% chance of profit"
+        means 88% <i>conditional on the future resembling the past</i> &mdash; which is the
+        assumption actually doing all the work, and it is not tested by the simulation.</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Forward projection &mdash; long-only vs long+short</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">10,000 simulations per cell &middot; block bootstrap &middot; gross of costs</span>
+    </div>
+    <div class="table-scroll"><table id="proj-class-table">
+      <thead><tr>
+        <th style="text-align:left">Class</th><th>Horizon</th>
+        <th>Long median</th><th>L+S median</th>
+        <th>Long CAGR</th><th>L+S CAGR</th>
+        <th>Long P(profit)</th><th>L+S P(profit)</th>
+        <th>Long DD p95</th><th>L+S DD p95</th>
+        <th style="text-align:left">Long wins</th>
+      </tr></thead><tbody></tbody>
+    </table></div>
+    <p style="margin-top:12px" id="proj-verdict"></p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Where the next five years could land</h2>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:var(--accent-soft)"></span>5th&ndash;95th percentile</span>
+        <span><span class="legend-dot" style="background:var(--accent)"></span>median path</span>
+      </div>
+    </div>
+    <p style="margin-bottom:12px">Equity multiple over a five-year forward window, long-only, gross of
+      costs. Note the vertical scale differs per instrument &mdash; read the spread between the
+      bands, not the height of the line. A band that spans an order of magnitude is telling you the
+      point estimate is close to meaningless on its own.</p>
+    <div class="mc-grid" id="proj-grid"></div>
+  </section>
+
+  <section class="panel caveats">
+    <h2>Reading these projections honestly</h2>
+    <ul>
+      <li><b>The crypto five-year medians are not forecasts and should not be read as any.</b> A
+        median terminal multiple above 15&times; is the arithmetic of feeding a decade-long bull
+        market's trade distribution into a compounding engine. It tells you what the past
+        distribution implies, which is precisely why it is more useful as a warning about the input
+        than as a projection of the output.</li>
+      <li><b>An expectation of mine failed here, and the number is left in.</b> I ran a block
+        bootstrap alongside the standard independent-draw one expecting it to reveal deeper
+        drawdowns, on the theory that losing trades cluster and independent draws break the clusters
+        up. It came out <b>1.6 percentage points shallower</b> (67.0% vs 69.5% at the 95th
+        percentile), not deeper. The likely reason is that the touch-the-SMA exit closes a position
+        the moment the trend breaks, so consecutive trades carry little autocorrelation for the
+        block method to preserve. Both numbers are shown because the comparison is the evidence.</li>
+      <li><b>Drawdowns are measured trade-to-trade, so the real ones are worse.</b> Equity is
+        marked at each trade's close, which misses the dip inside an open trade. Every drawdown
+        figure here is a floor, not a ceiling &mdash; and the floors are already brutal: a 69%
+        worst-case five-year drawdown on crypto long-only.</li>
+      <li><b>Each instrument is projected in isolation.</b> These do not add up to a portfolio,
+        because large-cap crypto trades as one correlated bloc &mdash; holding ten of them is far
+        closer to ten units of one bet than to ten independent bets, and a portfolio built this way
+        would carry most of the drawdown of a single name.</li>
+    </ul>
+  </section>
+
+  <section id="liquidity" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">Testing an explanation · does liquidity decide where this works?</p>
+      <h1>Is the edge just a liquidity effect?</h1>
+      <div class="rule-line">
+        The proposition: the rule pays on deeply liquid instruments and fails on thin ones. That is a
+        claim about a cross-sectional relationship, so it needs a liquidity number per instrument
+        measured against the result &mdash; not an eyeball over the winners. Liquidity is median
+        daily <b>notional USD</b> traded over the last three years, with every futures contract
+        converted using its real multiplier, since gold is 100 troy oz and corn is 5,000 bushels and
+        raw contract counts are not comparable.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel caveats">
+    <h2>A data problem that would have faked a confirmation</h2>
+    <ul>
+      <li><b>Yahoo's continuous-futures volume is broken for six of the sixteen commodities.</b>
+        PL=F prints a median of <span class="num">2 contracts/day</span> with 38% zero-volume days;
+        SI=F prints <span class="num">87</span>. Real exchange volume for both runs into the tens of
+        thousands. GOLD (186k), CRUDE (296k) and CORN (163k) are plausible and match reality, so the
+        feed is not uniformly wrong &mdash; it is wrong in specific places.</li>
+      <li><b>This mattered more than it looks.</b> PLATINUM and PALLADIUM are precisely the two
+        instruments that failed the Markov test. Ranking them as near-zero liquidity on broken data
+        would have produced a textbook confirmation of the hypothesis being tested &mdash; thin
+        markets fail, liquid markets work &mdash; built entirely on a data artifact. All six are
+        excluded from the correlations below: SILVER, PLATINUM, PALLADIUM, COPPER, COFFEE, COTTON.</li>
+      <li><b>A bug of mine in the same file, for completeness.</b> yfinance reports <code>*-USD</code>
+        crypto volume in USD already; multiplying it by the close double-counted and put Bitcoin at
+        $3.5 quadrillion traded per day. Fixed &mdash; BTC now reads
+        <span class="num">$41.2B/day</span>, which matches reality.</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Liquidity against the result</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">24 instruments with usable volume data</span>
+    </div>
+    <div class="chart-wrap" id="liqScatter"></div>
+    <div class="legend-row" id="liq-corr" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>More-liquid half vs less-liquid half, within each class</h2></div>
+    <div class="compare-grid" id="liq-tiers"></div>
+    <p style="margin-top:12px" id="liq-verdict"></p>
+  </section>

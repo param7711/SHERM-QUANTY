@@ -53,6 +53,19 @@ CONTRACT = {
 }
 
 
+def _sanitize(o):
+    """json.dump writes bare NaN/Infinity, which are not valid JSON and fail
+    JSON.parse in the browser. Crypto zero-return fractions are all exactly 0,
+    so their correlation is genuinely undefined -- that must serialize as null."""
+    if isinstance(o, float):
+        return None if (math.isnan(o) or math.isinf(o)) else o
+    if isinstance(o, dict):
+        return {k: _sanitize(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_sanitize(v) for v in o]
+    return o
+
+
 def fetch(name, ticker):
     path = os.path.join(VOL_DIR, f"{name}.parquet")
     if os.path.exists(path):
@@ -195,7 +208,7 @@ def main():
                  "measured over the most recent ~3 years."),
     }
     with open(os.path.join(OUT_DIR, "liquidity_test.json"), "w") as f:
-        json.dump(payload, f, default=str)
+        json.dump(_sanitize(payload), f, default=str)
 
     print(f"\nExcluded for unusable Yahoo volume data: {dropped or 'none'}")
     print("\n=== Liquidity ranking (median notional USD traded per day) ===")

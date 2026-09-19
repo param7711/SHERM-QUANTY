@@ -16,6 +16,8 @@ body_rest  = lines(292, 495)    # grid / long+short / head-to-head body
 val_body   = open(f"{SP}/val_body.html").read()
 val_js     = open(f"{SP}/val_js.js").read()
 hist_js    = open(f"{SP}/rc_histogram.js").read()
+extra_body = open(f"{SP}/extra_body.html").read()
+extra_js   = open(f"{SP}/extra_js.js").read()
 
 # --- 1. extend the chart library -------------------------------------------
 rc_lib = rc_lib.replace(
@@ -137,6 +139,8 @@ footer = """  <footer>
 def rd(n): return open(os.path.join(OUT, n)).read()
 payloads = {
     "validation-data": rd("validation_report_data.json"),
+    "projection-data": rd("mc_projection.json"),
+    "liquidity-data": rd("liquidity_test.json"),
     "grid-report-data": rd("grid_report_data.json"),
     "grid-report-data-both": rd("grid_report_data_both.json"),
     "headtohead-data": rd("headtohead_data.json"),
@@ -146,10 +150,14 @@ for k, v in payloads.items():
     if re.search(r"\b(NaN|Infinity|-Infinity)\b", v):
         raise SystemExit(f"{k} contains non-JSON NaN/Infinity tokens")
 
+_vp = '<section class="panel caveats" id="verdict-panel">'
+assert _vp in val_body, "verdict panel anchor missing"
+val_body = val_body.replace(_vp, extra_body + "\n" + _vp, 1)
+
 html = (
     css + "\n\n<div class=\"wrap\">\n\n" + val_body + "\n\n" + body_rest + "\n\n" + footer + "\n\n"
     + "\n".join(f'<script id="{k}" type="application/json">{v}</script>' for k, v in payloads.items())
-    + "\n\n<script>\n" + rc_lib + "\n\n" + val_js + "\n" + grid_js + "\n</script>\n"
+    + "\n\n<script>\n" + rc_lib + "\n\n" + val_js + "\n" + extra_js + "\n" + grid_js + "\n</script>\n"
 )
 
 dest = os.path.join(SP, "validation_report.html")
