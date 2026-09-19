@@ -88,7 +88,7 @@ def main():
             ],
         },
         "eras": {
-            "long": {k: era_long[k] for k in ("eras", "by_era", "by_class_era", "per_asset", "summary")} if era_long else None,
+            "long": {k: era_long[k] for k in ("eras", "rows", "by_era", "by_class_era", "per_asset", "summary")} if era_long else None,
             "both": {k: era_both[k] for k in ("by_era", "summary")} if era_both else None,
         },
         "extras": {

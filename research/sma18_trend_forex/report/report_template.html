@@ -1,0 +1,1170 @@
+<title>SMA18 Trend Hypothesis</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --surface-2:   #f2f1ec;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --ink-muted:   #898781;
+    --grid:        #e1e0d9;
+    --axis:        #c3c2b7;
+    --border:      rgba(11,11,11,0.10);
+    --accent:      #2a78d6;
+    --accent-soft: #cde2fb;
+    --context:     #898781;
+    --context-soft:#e1e0d9;
+    --good:        #0ca30c;
+    --critical:    #d03b3b;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:        #0d0d0d;
+      --surface:     #1a1a19;
+      --surface-2:   #201f1d;
+      --ink:         #ffffff;
+      --ink-2:       #c3c2b7;
+      --ink-muted:   #898781;
+      --grid:        #2c2c2a;
+      --axis:        #383835;
+      --border:      rgba(255,255,255,0.10);
+      --accent:      #3987e5;
+      --accent-soft: #184f95;
+      --context:     #898781;
+      --context-soft:#2c2c2a;
+      --good:        #0ca30c;
+      --critical:    #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --surface-2:   #201f1d;
+    --ink:         #ffffff;
+    --ink-2:       #c3c2b7;
+    --ink-muted:   #898781;
+    --grid:        #2c2c2a;
+    --axis:        #383835;
+    --border:      rgba(255,255,255,0.10);
+    --accent:      #3987e5;
+    --accent-soft: #184f95;
+    --context:     #898781;
+    --context-soft:#2c2c2a;
+    --good:        #0ca30c;
+    --critical:    #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--sans);
+    margin: 0;
+    padding: 0 16px;
+    padding-block: 28px 64px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+
+  h1, h2, h3 { font-family: var(--sans); text-wrap: balance; margin: 0; }
+  h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; font-weight: 700; }
+  h3 { font-size: 0.92rem; font-weight: 600; }
+  p  { line-height: 1.6; color: var(--ink-2); margin: 0; max-width: 68ch; }
+  code, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-muted); margin: 0 0 6px;
+  }
+  header.hero { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+  .rule-line {
+    font-family: var(--mono); font-size: 0.92rem; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; line-height: 1.65;
+  }
+  .rule-line b { color: var(--accent); font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .tile .label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--ink-muted); }
+  .tile .value { font-family: var(--mono); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
+  .tile .sub { font-size: 0.78rem; color: var(--ink-2); }
+  .pos { color: var(--good); } .neg { color: var(--critical); }
+
+  section { display: flex; flex-direction: column; gap: 14px; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px 20px;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .legend-row { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-2); }
+  .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+  .chart-wrap { position: relative; width: 100%; }
+  .chart-tooltip {
+    position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 0.72rem; line-height: 1.55;
+    max-height: 220px; overflow-y: auto; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 6; min-width: 150px;
+    transition: opacity 0.08s ease;
+  }
+
+  .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .compare-card { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .compare-card .metric-label { font-size: 0.72rem; color: var(--ink-muted); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; }
+  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+  .bar-row .name { width: 76px; flex-shrink: 0; color: var(--ink-2); }
+  .bar-track { flex: 1; height: 8px; background: var(--context-soft); border-radius: 4px; position: relative; overflow: hidden; }
+  .bar-fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .bar-val { width: 56px; text-align: right; font-family: var(--mono); flex-shrink: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--grid); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th { text-align: right; color: var(--ink-muted); font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; user-select: none; }
+  th:first-child, td:first-child { text-align: left; font-family: var(--sans); font-weight: 600; }
+  th:hover { color: var(--ink); }
+  tbody tr:hover { background: var(--surface-2); }
+  .table-scroll { overflow-x: auto; }
+  .chip { display: inline-block; font-size: 0.66rem; font-family: var(--mono); padding: 1px 6px; border-radius: 20px; }
+  .chip.fit { background: var(--accent-soft); color: var(--accent); }
+  .chip.jpy { background: var(--context-soft); color: var(--ink-2); }
+  .chip.cls-FX { background: var(--accent-soft); color: var(--accent); }
+  .chip.cls-EQUITY_INDEX { background: #eda10030; color: #a5730a; }
+  .chip.cls-COMMODITY { background: #1baf7a30; color: #128a5e; }
+  .chip.cls-CRYPTO { background: #e8341530; color: #c53814; }
+
+  .nav-links { display: flex; gap: 14px; font-family: var(--mono); font-size: 0.78rem; flex-wrap: wrap; }
+  .nav-links a { color: var(--accent); text-decoration: none; }
+  .nav-links a:hover { text-decoration: underline; }
+
+  .heatmap-tbl { border-collapse: separate; border-spacing: 3px; font-size: 0.78rem; }
+  .heatmap-tbl th { text-align: center; padding: 4px 10px; font-family: var(--mono); font-size: 0.66rem; text-transform: uppercase; color: var(--ink-muted); }
+  .heatmap-tbl th:first-child, .heatmap-tbl td.asset-cell { text-align: left; }
+  .heatmap-tbl td.asset-cell { font-family: var(--sans); font-weight: 600; font-size: 0.8rem; padding: 4px 12px 4px 4px; white-space: nowrap; }
+  .heat-cell { border-radius: 6px; padding: 7px 10px; text-align: center; font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; min-width: 58px; }
+  .heat-cell.empty { color: var(--ink-muted); font-weight: 400; background: var(--surface-2) !important; }
+
+  .tf-group { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+  .tf-group + .tf-group { border-top: 1px solid var(--grid); padding-top: 18px; }
+  .tf-group-head { display: flex; align-items: baseline; gap: 10px; }
+  .tf-badge { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; color: var(--accent);
+    background: var(--accent-soft); padding: 2px 10px; border-radius: 6px; }
+  .tf-group-sub { font-size: 0.76rem; color: var(--ink-muted); font-family: var(--mono); }
+
+  .mc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .mc-card { background: var(--surface-2); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .mc-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .mc-card-head .name { font-weight: 600; font-size: 0.88rem; }
+  .mc-card-head .badge-label { font-size: 0.7rem; color: var(--ink-muted); font-family: var(--mono); }
+  .mc-stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.74rem; font-family: var(--mono); color: var(--ink-2); }
+  .mc-stats b { color: var(--ink); }
+
+  .caveats { display: flex; flex-direction: column; gap: 10px; }
+  .caveats ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .caveats li { color: var(--ink-2); line-height: 1.55; font-size: 0.9rem; }
+  .caveats li b { color: var(--ink); }
+
+  footer { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-muted); padding-top: 4px; }
+  footer a { color: var(--ink-muted); }
+
+  @media (max-width: 560px) {
+    .tile .value { font-size: 1.25rem; }
+    th, td { padding: 6px 6px; font-size: 0.74rem; }
+  }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">Research note · SHERM-QUANTY · daily FX, 2015 – present</p>
+    <h1>Does an 18-SMA long trend rule earn its keep on low-vol, trend-sustaining FX pairs?</h1>
+    <div class="rule-line">
+      Long only. Indicator: <b>18-period SMA</b> of daily close.
+      <b>Entry</b> — close above SMA18 on two consecutive candles → buy at the close of the second.
+      <b>Exit</b> — flat as soon as price touches the SMA18 again.
+      Tested against the pair-selection idea as stated: favor pairs where trend tends to sustain
+      and relative volatility runs slightly lower than peers.
+    </div>
+    <nav class="nav-links">
+      <a href="#part1">↓ Part 1 — daily FX, long-only</a>
+      <a href="#part2">Part 2 — timeframes &amp; asset classes ↓</a>
+      <a href="#part3">Part 3 — long + short ↓</a>
+      <a href="#headtohead">Head-to-head ↓</a>
+    </nav>
+  </header>
+
+  <div id="part1"></div>
+
+  <section>
+    <div class="tiles" id="verdict-tiles"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Equity curves, all 14 pairs</h2>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:var(--accent)"></span>meets both hypothesis filters (low vol + high SMA persistence)</span>
+        <span><span class="legend-dot" style="background:var(--context)"></span>rest of universe</span>
+      </div>
+    </div>
+    <p style="margin-bottom:10px">Compounded daily equity from the rule above, base = 1.0, no costs. Hover for pair and level.</p>
+    <div class="chart-wrap" id="equityChart"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>What actually predicts performance: volatility, or trend persistence?</h2>
+    </div>
+    <p style="margin-bottom:10px">Each point is one pair. X = annualized volatility of daily returns. Y = average number of
+      consecutive days price stays above the SMA18 once it crosses — the empirical stand-in for "trend sustains."
+      Color = the pair's backtested Sharpe (red = negative, blue = positive). If the hypothesis is right, the
+      best (bluest) points should cluster toward the <i>lower-left</i>.</p>
+    <div class="chart-wrap" id="scatterChart"></div>
+    <div class="legend-row" id="corr-callout" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Group comparison</h2></div>
+    <div class="compare-grid" id="compare-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Per-pair results</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">click a header to sort</span>
+    </div>
+    <div class="table-scroll">
+      <table id="pair-table">
+        <thead>
+          <tr>
+            <th data-key="pair" style="text-align:left">Pair</th>
+            <th data-key="ann_vol">Ann. Vol</th>
+            <th data-key="avg_up_run_days">Avg Up-Run (d)</th>
+            <th data-key="n_trades">Trades</th>
+            <th data-key="win_rate">Win Rate</th>
+            <th data-key="avg_return_pct">Avg Ret/Trade</th>
+            <th data-key="cagr_pct">CAGR</th>
+            <th data-key="sharpe">Sharpe</th>
+            <th data-key="max_drawdown_pct">Max DD</th>
+            <th data-key="profit_factor">PF</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel caveats">
+    <h2>Reading this result honestly</h2>
+    <ul>
+      <li><b>Low win rate is expected, not a bug.</b> Win rates sit at 20–33% across every pair — normal for a rule that
+        cuts every pullback to the SMA and only pays off on the trades that run far before mean-reverting back to it.
+        Judge it on Sharpe / profit factor, not win rate.</li>
+      <li><b>The volatility half of the hypothesis did not hold in this test.</b> Annualized volatility correlates
+        <i>positively</i> with Sharpe across the 14 pairs, not negatively — the opposite of "lower relative volatility
+        does better." The trend-persistence half held up much better (see correlations above the scatter).</li>
+      <li><b>The strict "fits both filters" bucket is tiny (3 of 14 pairs)</b> and mixed: two of the three (USDJPY, EURJPY)
+        were the best performers in the whole universe, but the third (GBPUSD) had one of the worst Sharpes. A 3-pair
+        bucket isn't enough to call the joint filter validated — the continuous correlations are the more reliable read.</li>
+      <li><b>No transaction costs, spread, or swap/rollover are modeled.</b> Spot FX spreads and overnight financing
+        on a held long position are real drags this backtest ignores entirely — they would lower every number here,
+        most on the shorter-average-holding-day pairs.</li>
+      <li><b>"Touch" is filled at the SMA price</b> (or at the open if the candle gaps through it) — i.e. a resting stop
+        exactly at the SMA. Real fills would see slippage, especially around the gap-through case.</li>
+      <li><b>Single 2015–present sample, no out-of-sample split.</b> The period includes a multi-year USD/JPY
+        rate-differential trend (2022–2024) that likely flatters yen pairs specifically — that's a regime effect,
+        not necessarily a structural property of those pairs.</li>
+      <li><b>Daily bars only, single asset class.</b> This part tests daily closes on FX only —
+        <a href="#part2">Part 2 below</a> re-runs the identical rule across four candle sizes and four asset classes.</li>
+    </ul>
+  </section>
+
+  <section id="part2" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">Part 2 · does timeframe or asset volatility change the answer?</p>
+      <h1>Same rule, four candle sizes, four asset classes — where does it actually work?</h1>
+      <div class="rule-line">
+        Identical entry/exit as Part 1, run on <b>15m, 30m, 4h and 1d</b> bars across
+        <b>20 instruments</b> spanning FX, equity indices, commodities and crypto — so
+        "volatile vs. non-volatile" and "which timeframe" get one consistent, comparable
+        answer instead of separate one-off tests. Volatility tiers are measured per
+        instrument from its own data, not assumed.
+      </div>
+    </header>
+  </section>
+
+  <section>
+    <div class="tiles" id="grid-verdict-tiles"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Sharpe by instrument &times; timeframe</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">rows sorted by 1d annualized vol, low &rarr; high</span>
+    </div>
+    <div class="table-scroll">
+      <table id="heatmap-table" class="heatmap-tbl"></table>
+    </div>
+    <div class="legend-row" id="heatmap-legend" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel" id="montecarlo">
+    <div class="panel-head">
+      <h2>Monte Carlo — how much of this is luck?</h2>
+    </div>
+    <p style="margin-bottom:8px">Each chart bootstrap-resamples that instrument/timeframe's own set of realized
+      trade outcomes 2,000 times (with replacement) — same trades, random order/sample — and plots the 5th–95th and
+      25th–75th percentile bands of the resulting equity paths against the actual realized path (bold line). A wide
+      band or an actual path that hugs the edge means the headline Sharpe is more a function of trade order than of
+      a durable edge; a narrow band with the actual path tracking the median means the result is a more stable
+      property of the trade set.</p>
+    <div class="mc-grid" id="mc-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Mean Sharpe by timeframe</h2></div>
+    <div class="compare-grid" id="tf-compare-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Mean performance by asset class</h2></div>
+    <div class="compare-grid" id="class-compare-grid"></div>
+  </section>
+
+  <section class="panel" id="fullgrid">
+    <div class="panel-head">
+      <h2>Full grid, organized by timeframe</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">each group sorted by Sharpe · click a header to re-sort within its group</span>
+    </div>
+    <div id="grid-by-tf"></div>
+  </section>
+
+  <section class="panel caveats">
+    <h2>Reading Part 2 (and the Monte Carlo) honestly</h2>
+    <ul>
+      <li><b>15m and 30m are ~60 calendar days of data — that's a Yahoo/yfinance hard limit, not a choice.</b>
+        4h (resampled from 1h) covers up to ~2 years; 1d covers 2015&ndash;present. A 60-day window is a small,
+        single-regime sample: trust the <i>direction</i> of the 15m/30m results (worse than 4h/1d, consistently), not
+        the exact Sharpe/CAGR magnitude — annualizing a 60-day return blows small differences up a lot
+        (e.g. USDCAD's 15m Sharpe of roughly &minus;27 comes from a real but unremarkable &minus;13.8% raw 60-day
+        return, not a data error).</li>
+      <li><b>The Monte Carlo bootstrap resamples trade order, not the market.</b> It answers "given this exact
+        multiset of win/loss outcomes, how much does the result depend on the sequence they happened to arrive in" —
+        it does not simulate new price paths or new signals, and it treats trades as independent draws, which
+        understates real uncertainty since consecutive trades on the same instrument share the same regime. Treat the
+        bands as a lower bound on how uncertain the result really is, not an upper bound. Combinations with fewer
+        than 20 trades are excluded from Monte Carlo entirely (too little data to resample meaningfully).</li>
+      <li><b>The volatility finding reverses direction from Part 1's framing, and it's now the stronger, more
+        consistent result.</b> Within every single timeframe tested, the empirical high-volatility half of the
+        universe beat the low-volatility half on mean Sharpe — often by a wide margin. Pooled across all 80
+        instrument&times;timeframe combinations, vol correlates with Sharpe at <span id="corr-pooled-inline"></span>.
+        That's the opposite of "favor pairs with slightly lower relative volatility."</li>
+      <li><b>FX as an asset class underperforms crypto, commodities, and equity indices here</b> on every aggregate
+        metric — this rule, as specified, looks like a volatility/momentum harvester more than a low-vol carry-style
+        system.</li>
+      <li><b>Crypto's daily-timeframe numbers are inflated by the asset simply having risen for a decade.</b>
+        BTCUSD's huge 1d raw return partly reflects being long Bitcoin through a multi-year bull market, not proof the
+        <i>rule</i> adds edge there — no buy-and-hold benchmark is computed here to separate the two.</li>
+      <li><b>4h bars are built by resampling 1h bars</b>, aligned to clock hours (00/04/08/12&hellip; UTC), not to any
+        particular session open. Still no transaction costs, spread, or funding anywhere in Part 2 — this matters
+        most at 15m/30m, where a realistic spread could erase the edge entirely.</li>
+      <li><b>Different assets carry different history lengths</b> even within "1d," and results for the same asset
+        across timeframes are not independent trials — treat the 80-combination grid as a wide sweep, not 80
+        independent experiments.</li>
+      <li><b>Long only, throughout.</b> <a href="#part3">Part 3 below</a> mirrors the exact same rule into a short
+        entry below the SMA18 and re-runs the identical grid to see whether adding the short side helps or hurts.</li>
+    </ul>
+  </section>
+
+  <section id="part3" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">Part 3 · adding the short side</p>
+      <h1>Long + short: mirror the rule below the SMA18 — does it help?</h1>
+      <div class="rule-line">
+        Same 18-period SMA, same touch-exit. <b>Short entry</b> — close below SMA18 on two
+        consecutive candles → sell at the close of the second. <b>Short exit</b> — flat as soon
+        as price touches the SMA18 again from below. One open position at a time (long, short,
+        or flat) — a reversal system, run on the identical 20-instrument &times; 4-timeframe
+        grid as Part 2.
+      </div>
+    </header>
+  </section>
+
+  <section>
+    <div class="tiles" id="p3-verdict-tiles"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Sharpe by instrument &times; timeframe — long + short</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">same layout as Part 2, for direct visual comparison</span>
+    </div>
+    <div class="table-scroll">
+      <table id="p3-heatmap-table" class="heatmap-tbl"></table>
+    </div>
+    <div class="legend-row" id="p3-heatmap-legend" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Monte Carlo — long + short</h2></div>
+    <p style="margin-bottom:8px">Same bootstrap method as Part 2's Monte Carlo, applied to the long+short trade
+      sequences. Two picks are the strongest long+short results found; two are the same instruments Part 2
+      highlighted, so you can see exactly how adding shorts changed their picture; one is the cautionary case again.</p>
+    <div class="mc-grid" id="p3-mc-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Mean Sharpe by timeframe — long + short</h2></div>
+    <div class="compare-grid" id="p3-tf-compare-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Mean performance by asset class — long + short</h2></div>
+    <div class="compare-grid" id="p3-class-compare-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Full grid, long + short, organized by timeframe</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">each group sorted by Sharpe · click a header to re-sort within its group</span>
+    </div>
+    <div id="p3-grid-by-tf"></div>
+  </section>
+
+  <section class="panel" id="headtohead">
+    <div class="panel-head"><h2>Head-to-head: does adding the short side help?</h2></div>
+    <p style="margin-bottom:8px">Same 80 instrument&times;timeframe combinations, long-only (Part 2) vs. long+short
+      (Part 3), matched pair by pair.</p>
+    <div class="tiles" id="h2h-tiles"></div>
+    <div class="compare-grid" id="h2h-compare-grid" style="margin-top:14px"></div>
+    <div class="table-scroll" style="margin-top:14px">
+      <table id="h2h-table">
+        <thead>
+          <tr>
+            <th data-key="asset" style="text-align:left">Asset</th>
+            <th data-key="asset_class" style="text-align:left">Class</th>
+            <th data-key="timeframe">TF</th>
+            <th data-key="sharpe_long">Sharpe (long)</th>
+            <th data-key="sharpe_both">Sharpe (long+short)</th>
+            <th data-key="sharpe_delta">Delta</th>
+            <th data-key="cagr_pct_long">CAGR (long)</th>
+            <th data-key="cagr_pct_both">CAGR (long+short)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel caveats">
+    <h2>Reading Part 3 &amp; the head-to-head honestly</h2>
+    <ul>
+      <li><b>Adding the short side made things worse in about 4 of every 5 combinations tested</b>
+        (<span id="h2h-inline-stat"></span>) — over this sample, these markets spent more time trending up than
+        down, so a rule that mirrors the long entry into a short entry mostly means "sell into an uptrend, buy back
+        the countertrend bounce," which is the losing side of momentum more often than not.</li>
+      <li><b>The one place shorting is roughly neutral-to-helpful is FX</b> — the asset class where price action was
+        the most two-sided over this window. It's still the worst-performing class in absolute terms either way; adding
+        shorts doesn't rescue it, it just stops making it (quite as much) worse.</li>
+      <li><b>Commodities and crypto lose the most from adding shorts</b> — exactly the asset classes that trended up
+        hardest and most persistently in Part 2. This is consistent, not a coincidence: a system built to ride
+        sustained trends will be hurt most by fading the strongest trends.</li>
+      <li><b>This is still one historical sample, now longer but not out-of-sample tested.</b> A different multi-year
+        stretch with more two-sided or bearish regimes (a prolonged commodities bear market, a crypto winter) could
+        flip this conclusion for those asset classes specifically — the head-to-head table above is there so you can
+        see exactly which instrument/timeframe combinations would need to reverse for that to happen.</li>
+      <li><b>Same cost, fill, and sample-size caveats as Part 2 apply here</b>, doubled — a long+short system trades
+        roughly twice as often as long-only on the same instrument, so spread/slippage costs (still not modeled)
+        would bite twice as hard.</li>
+    </ul>
+  </section>
+
+  <footer>
+    research/sma18_trend_forex/{backtest.py, run_grid.py, strategy.py, monte_carlo.py} · SHERM-QUANTY repo ·
+    reproduce with <code>python research/sma18_trend_forex/run_grid.py both</code>
+  </footer>
+</div>
+
+<script id="report-data" type="application/json">__REPORT_DATA__</script>
+<script id="grid-report-data" type="application/json">__GRID_REPORT_DATA__</script>
+<script id="grid-report-data-both" type="application/json">__GRID_REPORT_DATA_BOTH__</script>
+<script id="headtohead-data" type="application/json">__HEADTOHEAD_DATA__</script>
+
+<script>
+// ===========================================================================
+// Shared SVG chart library — no external dependencies, no CDN, so this
+// never depends on a third-party script actually loading.
+// ===========================================================================
+var RC = (function () {
+  "use strict";
+  var _root = getComputedStyle(document.documentElement);
+  function tok(name) { return _root.getPropertyValue(name).trim(); }
+  var THEME = { grid: tok('--grid'), muted: tok('--ink-muted'), surface: tok('--surface'),
+                border: tok('--border'), ink: tok('--ink') };
+
+  function svgPoint(svg, evt) {
+    var pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    var ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    var p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  }
+
+  function niceTicks(min, max, count) {
+    var range = max - min || 1, step = range / count, out = [];
+    for (var i = 0; i <= count; i++) out.push(min + step * i);
+    return out;
+  }
+
+  function positionTooltip(wrapEl, tooltip, evt) {
+    var rect = wrapEl.getBoundingClientRect();
+    var left = evt.clientX - rect.left + 14, top = evt.clientY - rect.top - 10;
+    if (left + 190 > rect.width) left = evt.clientX - rect.left - 205;
+    tooltip.style.left = Math.max(0, left) + 'px';
+    tooltip.style.top = Math.max(0, top) + 'px';
+  }
+
+  function lineChart(container, cfg) {
+    var W = 760, H = cfg.height || 300, mL = 54, mR = 14, mT = 12, mB = 28;
+    var plotW = W - mL - mR, plotH = H - mT - mB;
+    var n = cfg.n;
+
+    var allVals = [];
+    (cfg.lines || []).forEach(function (l) { l.values.forEach(function (v) { if (v != null && !isNaN(v)) allVals.push(v); }); });
+    (cfg.bands || []).forEach(function (b) {
+      b.lower.forEach(function (v) { if (v != null) allVals.push(v); });
+      b.upper.forEach(function (v) { if (v != null) allVals.push(v); });
+    });
+    var yMin = Math.min.apply(null, allVals), yMax = Math.max.apply(null, allVals);
+    var pad = (yMax - yMin) * 0.08 || Math.abs(yMax || 1) * 0.08;
+    yMin -= pad; yMax += pad;
+
+    function xScale(i) { return mL + (n <= 1 ? 0 : i / (n - 1)) * plotW; }
+    function yScale(v) { return mT + plotH - (v - yMin) / ((yMax - yMin) || 1) * plotH; }
+
+    var yTicks = niceTicks(yMin, yMax, 4);
+    var gridSvg = yTicks.map(function (t) {
+      var y = yScale(t);
+      return '<line x1="' + mL + '" y1="' + y + '" x2="' + (W - mR) + '" y2="' + y + '" stroke="' + THEME.grid + '" stroke-width="1"/>' +
+        '<text x="' + (mL - 8) + '" y="' + (y + 3) + '" text-anchor="end" font-size="9" fill="' + THEME.muted + '" font-family="' + "'IBM Plex Mono',monospace" + '">' + (cfg.yFormat ? cfg.yFormat(t) : t.toFixed(2)) + '</text>';
+    }).join('');
+
+    var xTickCount = cfg.xTickCount || 6;
+    var xTicksSvg = '';
+    for (var k = 0; k <= xTickCount; k++) {
+      var idx = Math.round(k / xTickCount * (n - 1));
+      var x = xScale(idx);
+      xTicksSvg += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="middle" font-size="9" fill="' + THEME.muted + '" font-family="' + "'IBM Plex Mono',monospace" + '">' + (cfg.xLabels ? cfg.xLabels[idx] : idx) + '</text>';
+    }
+
+    var bandsSvg = (cfg.bands || []).map(function (b) {
+      var upperPts = [], lowerPts = [];
+      for (var i = 0; i < n; i++) upperPts.push(xScale(i) + ',' + yScale(b.upper[i]));
+      for (var j = n - 1; j >= 0; j--) lowerPts.push(xScale(j) + ',' + yScale(b.lower[j]));
+      return '<polygon points="' + upperPts.concat(lowerPts).join(' ') + '" fill="' + b.color + '" stroke="none"/>';
+    }).join('');
+
+    var linesSvg = (cfg.lines || []).map(function (l) {
+      var pts = [];
+      for (var i = 0; i < n; i++) { if (l.values[i] != null) pts.push(xScale(i) + ',' + yScale(l.values[i])); }
+      var dash = l.dash ? ' stroke-dasharray="' + l.dash + '"' : '';
+      return '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + l.color + '" stroke-width="' + (l.width || 1.5) + '"' + dash + ' stroke-linejoin="round" stroke-linecap="round" opacity="' + (l.opacity != null ? l.opacity : 1) + '"/>';
+    }).join('');
+
+    var dotsSvg = (cfg.lines || []).map(function (l, li) {
+      return '<circle class="hover-dot" data-line="' + li + '" r="3.5" fill="' + l.color + '" stroke="' + THEME.surface + '" stroke-width="1.5" opacity="0" cx="-99" cy="-99"/>';
+    }).join('');
+
+    container.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">' +
+        gridSvg + xTicksSvg + bandsSvg + linesSvg + dotsSvg +
+        '<line class="crosshair" x1="0" y1="' + mT + '" x2="0" y2="' + (H - mB) + '" stroke="' + THEME.muted + '" stroke-width="1" opacity="0"/>' +
+        '<rect class="hover-capture" x="' + mL + '" y="' + mT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent" style="cursor:crosshair"/>' +
+      '</svg>' +
+      '<div class="chart-tooltip" style="opacity:0"></div>';
+
+    var svg = container.querySelector('svg');
+    var capture = container.querySelector('.hover-capture');
+    var crosshair = container.querySelector('.crosshair');
+    var dots = container.querySelectorAll('.hover-dot');
+    var tooltip = container.querySelector('.chart-tooltip');
+
+    function onMove(evt) {
+      var p = svgPoint(svg, evt);
+      var idx = Math.round((p.x - mL) / plotW * (n - 1));
+      idx = Math.max(0, Math.min(n - 1, idx));
+      var x = xScale(idx);
+      crosshair.setAttribute('x1', x); crosshair.setAttribute('x2', x); crosshair.setAttribute('opacity', 1);
+
+      var rows = (cfg.lines || []).map(function (l, li) {
+        var v = l.values[idx];
+        dots[li].setAttribute('cx', v == null ? -99 : x);
+        dots[li].setAttribute('cy', v == null ? -99 : yScale(v));
+        dots[li].setAttribute('opacity', v == null ? 0 : 1);
+        return { label: l.label, value: v, color: l.color };
+      }).filter(function (r) { return r.value != null; });
+
+      rows.sort(function (a, b) { return b.value - a.value; });
+      var maxLines = cfg.maxTooltipLines || rows.length;
+      var shown = rows.slice(0, maxLines);
+      var extra = rows.length - shown.length;
+
+      tooltip.innerHTML = '<div style="font-weight:600;margin-bottom:4px;color:' + THEME.ink + '">' + (cfg.tooltipTitle ? cfg.tooltipTitle(idx) : idx) + '</div>' +
+        shown.map(function (r) {
+          return '<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:' + r.color + '">&#9632; ' + r.label + '</span><span>' + (cfg.yFormat ? cfg.yFormat(r.value) : r.value.toFixed(3)) + '</span></div>';
+        }).join('') + (extra > 0 ? '<div style="color:' + THEME.muted + ';margin-top:2px">+' + extra + ' more</div>' : '');
+
+      positionTooltip(container, tooltip, evt);
+      tooltip.style.opacity = 1;
+    }
+    function onLeave() {
+      crosshair.setAttribute('opacity', 0);
+      dots.forEach(function (d) { d.setAttribute('opacity', 0); });
+      tooltip.style.opacity = 0;
+    }
+    capture.addEventListener('pointermove', onMove);
+    capture.addEventListener('pointerleave', onLeave);
+  }
+
+  function scatterChart(container, cfg) {
+    var W = 760, H = 360, mL = 60, mR = 16, mT = 12, mB = 46;
+    var plotW = W - mL - mR, plotH = H - mT - mB;
+    var xs = cfg.points.map(function (p) { return p.x; });
+    var ys = cfg.points.map(function (p) { return p.y; });
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    var xPad = (xMax - xMin) * 0.12 || 0.01, yPad = (yMax - yMin) * 0.12 || 0.1;
+    xMin -= xPad; xMax += xPad; yMin -= yPad; yMax += yPad;
+
+    function xScale(v) { return mL + (v - xMin) / (xMax - xMin) * plotW; }
+    function yScale(v) { return mT + plotH - (v - yMin) / (yMax - yMin) * plotH; }
+
+    var xTicks = niceTicks(xMin, xMax, 5), yTicks = niceTicks(yMin, yMax, 5);
+    var mono = "'IBM Plex Mono',monospace", sans = "'IBM Plex Sans',sans-serif";
+    var gridSvg = yTicks.map(function (t) {
+      var y = yScale(t);
+      return '<line x1="' + mL + '" y1="' + y + '" x2="' + (W - mR) + '" y2="' + y + '" stroke="' + THEME.grid + '" stroke-width="1"/>' +
+        '<text x="' + (mL - 8) + '" y="' + (y + 3) + '" text-anchor="end" font-size="9" fill="' + THEME.muted + '" font-family="' + mono + '">' + (cfg.yFormat ? cfg.yFormat(t) : t.toFixed(1)) + '</text>';
+    }).join('') + xTicks.map(function (t) {
+      var x = xScale(t);
+      return '<line x1="' + x + '" y1="' + mT + '" x2="' + x + '" y2="' + (H - mB) + '" stroke="' + THEME.grid + '" stroke-width="1" opacity="0.5"/>' +
+        '<text x="' + x + '" y="' + (H - mB + 16) + '" text-anchor="middle" font-size="9" fill="' + THEME.muted + '" font-family="' + mono + '">' + (cfg.xFormat ? cfg.xFormat(t) : t.toFixed(2)) + '</text>';
+    }).join('');
+
+    var axisTitles = '<text x="' + (mL + plotW / 2) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="' + THEME.muted + '" font-family="' + sans + '">' + (cfg.xLabel || '') + '</text>' +
+      '<text x="14" y="' + (mT + plotH / 2) + '" text-anchor="middle" font-size="10" fill="' + THEME.muted + '" font-family="' + sans + '" transform="rotate(-90 14 ' + (mT + plotH / 2) + ')">' + (cfg.yLabel || '') + '</text>';
+
+    var pointsSvg = cfg.points.map(function (p, i) {
+      return '<circle class="scatter-pt" data-i="' + i + '" cx="' + xScale(p.x) + '" cy="' + yScale(p.y) + '" r="8" fill="' + p.color + '" stroke="' + THEME.surface + '" stroke-width="1.5" style="cursor:pointer"/>';
+    }).join('');
+
+    container.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">' +
+        gridSvg + axisTitles + pointsSvg +
+      '</svg>' + '<div class="chart-tooltip" style="opacity:0"></div>';
+
+    var tooltip = container.querySelector('.chart-tooltip');
+    container.querySelectorAll('.scatter-pt').forEach(function (circle) {
+      var i = parseInt(circle.getAttribute('data-i'), 10);
+      var p = cfg.points[i];
+      circle.addEventListener('pointerenter', function (evt) {
+        circle.setAttribute('r', 10);
+        tooltip.innerHTML = p.tooltip;
+        positionTooltip(container, tooltip, evt);
+        tooltip.style.opacity = 1;
+      });
+      circle.addEventListener('pointermove', function (evt) { positionTooltip(container, tooltip, evt); });
+      circle.addEventListener('pointerleave', function () { circle.setAttribute('r', 8); tooltip.style.opacity = 0; });
+    });
+  }
+
+  return { lineChart: lineChart, scatterChart: scatterChart, THEME: THEME };
+})();
+
+// ===========================================================================
+// Part 1 — daily FX
+// ===========================================================================
+(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById('report-data').textContent);
+  var pairs = DATA.pairs;
+  var root = getComputedStyle(document.documentElement);
+  function tok(name) { return root.getPropertyValue(name).trim(); }
+
+  var ACCENT = tok('--accent'), CONTEXT = tok('--context'), CRIT = tok('--critical'), GOOD = tok('--good');
+  var INK2 = tok('--ink-2'), MUTED = tok('--ink-muted');
+
+  var corrS = DATA.correlations.vs_sharpe;
+  var fitGroup = DATA.group_by_fit['True'] || {};
+  var restGroup = DATA.group_by_fit['False'] || {};
+
+  function tile(label, value, sub, cls) {
+    return '<div class="tile"><div class="label">' + label + '</div>' +
+      '<div class="value ' + (cls || '') + '">' + value + '</div>' +
+      '<div class="sub">' + sub + '</div></div>';
+  }
+  document.getElementById('verdict-tiles').innerHTML = [
+    tile('Trend persistence &harr; Sharpe', (corrS.avg_up_run_days >= 0 ? '+' : '') + corrS.avg_up_run_days.toFixed(2),
+         'correlation across 14 pairs &mdash; confirms the "sustains" half', 'pos'),
+    tile('Volatility &harr; Sharpe', (corrS.ann_vol >= 0 ? '+' : '') + corrS.ann_vol.toFixed(2),
+         'positive, not negative &mdash; contradicts "lower vol wins"', 'neg'),
+    tile('Fit-bucket avg Sharpe', (fitGroup.sharpe >= 0 ? '+' : '') + (fitGroup.sharpe || 0).toFixed(2),
+         'n=3 pairs meeting both filters', fitGroup.sharpe >= 0 ? 'pos' : 'neg'),
+    tile('Rest of universe avg Sharpe', (restGroup.sharpe >= 0 ? '+' : '') + (restGroup.sharpe || 0).toFixed(2),
+         'n=11 pairs', restGroup.sharpe >= 0 ? 'pos' : 'neg'),
+    tile('Trades simulated', DATA.trade_totals.total_trades.toLocaleString(),
+         'across ' + DATA.trade_totals.n_pairs + ' pairs, ' + DATA.params.start + ' &rarr; ' + DATA.params.end)
+  ].join('');
+
+  document.getElementById('corr-callout').innerHTML =
+    '<span><b style="color:' + INK2 + '">corr(vol, Sharpe)</b> = ' + corrS.ann_vol.toFixed(2) + '</span>' +
+    '<span><b style="color:' + INK2 + '">corr(up-run, Sharpe)</b> = ' + corrS.avg_up_run_days.toFixed(2) + '</span>' +
+    '<span><b style="color:' + INK2 + '">corr(%time above SMA, Sharpe)</b> = ' + corrS.pct_time_above_sma18.toFixed(2) + '</span>';
+
+  // ---------- equity curves ----------
+  var ec = DATA.equity_curves;
+  var labels = ec[pairs[0].pair].dates;
+  var fitSet = {};
+  pairs.forEach(function (p) { if (p.hypothesis_fit) fitSet[p.pair] = true; });
+
+  var lines = pairs.map(function (p) {
+    var isFit = !!fitSet[p.pair];
+    return { label: p.pair, values: ec[p.pair].equity, color: isFit ? ACCENT : CONTEXT,
+             width: isFit ? 2.25 : 1, opacity: isFit ? 1 : 0.6 };
+  });
+  lines.sort(function (a, b) { return (a.color === CONTEXT ? 0 : 1) - (b.color === CONTEXT ? 0 : 1); });
+
+  RC.lineChart(document.getElementById('equityChart'), {
+    n: labels.length, xLabels: labels, lines: lines, xTickCount: 6, maxTooltipLines: 8,
+    yFormat: function (v) { return v.toFixed(2); },
+    tooltipTitle: function (i) { return labels[i]; },
+  });
+
+  // ---------- scatter ----------
+  function hexToRgb(hex) {
+    hex = hex.trim().replace('#', '');
+    return [parseInt(hex.substr(0, 2), 16), parseInt(hex.substr(2, 2), 16), parseInt(hex.substr(4, 2), 16)];
+  }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  var blueRgb = hexToRgb(ACCENT || '#2a78d6'), redRgb = hexToRgb(CRIT || '#d03b3b'), grayRgb = [137, 135, 129];
+  function sharpeColor(s, maxAbs) {
+    var t = maxAbs === 0 ? 0 : s / maxAbs, rgb;
+    if (t >= 0) rgb = [lerp(grayRgb[0], blueRgb[0], t), lerp(grayRgb[1], blueRgb[1], t), lerp(grayRgb[2], blueRgb[2], t)];
+    else rgb = [lerp(grayRgb[0], redRgb[0], -t), lerp(grayRgb[1], redRgb[1], -t), lerp(grayRgb[2], redRgb[2], -t)];
+    return 'rgb(' + rgb.map(Math.round).join(',') + ')';
+  }
+  var maxAbsSharpe1 = Math.max.apply(null, pairs.map(function (p) { return Math.abs(p.sharpe); }));
+
+  RC.scatterChart(document.getElementById('scatterChart'), {
+    xLabel: 'Annualized volatility', yLabel: 'Avg. consecutive days above SMA18',
+    xFormat: function (v) { return (v * 100).toFixed(0) + '%'; }, yFormat: function (v) { return v.toFixed(1); },
+    points: pairs.map(function (p) {
+      return {
+        x: p.ann_vol, y: p.avg_up_run_days, color: sharpeColor(p.sharpe, maxAbsSharpe1),
+        tooltip: '<div style="font-weight:600;margin-bottom:4px">' + p.pair + '</div>' +
+          '<div>vol ' + (p.ann_vol * 100).toFixed(1) + '%</div>' +
+          '<div>up-run ' + p.avg_up_run_days.toFixed(1) + 'd</div>' +
+          '<div>sharpe ' + (p.sharpe >= 0 ? '+' : '') + p.sharpe.toFixed(2) + '</div>',
+      };
+    }),
+  });
+
+  // ---------- compare grid ----------
+  function compareCard(title, key, fmt) {
+    var a = fitGroup[key] || 0, b = restGroup[key] || 0;
+    var maxv = Math.max(Math.abs(a), Math.abs(b), 0.0001);
+    function row(name, v, color) {
+      var pct = Math.min(100, Math.abs(v) / maxv * 100);
+      return '<div class="bar-row"><span class="name">' + name + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%;background:' + color + '"></span></span>' +
+        '<span class="bar-val">' + fmt(v) + '</span></div>';
+    }
+    return '<div class="compare-card"><div class="metric-label">' + title + '</div>' +
+      row('Fit (n=3)', a, ACCENT) + row('Rest (n=11)', b, CONTEXT) + '</div>';
+  }
+  document.getElementById('compare-grid').innerHTML = [
+    compareCard('Sharpe', 'sharpe', function (v) { return v.toFixed(2); }),
+    compareCard('CAGR', 'cagr_pct', function (v) { return v.toFixed(1) + '%'; }),
+    compareCard('Win rate', 'win_rate', function (v) { return (v * 100).toFixed(0) + '%'; }),
+    compareCard('Max drawdown', 'max_drawdown_pct', function (v) { return v.toFixed(1) + '%'; }),
+  ].join('');
+
+  // ---------- table ----------
+  var tbody = document.querySelector('#pair-table tbody');
+  var sortKey = 'ann_vol', sortDir = 1;
+
+  function fmtCell(p, key) {
+    switch (key) {
+      case 'pair':
+        var chips = (p.hypothesis_fit ? '<span class="chip fit">fit</span> ' : '') +
+                    (p.pair.indexOf('JPY') >= 0 ? '<span class="chip jpy">JPY</span>' : '');
+        return p.pair + ' ' + chips;
+      case 'ann_vol': return (p.ann_vol * 100).toFixed(1) + '%';
+      case 'avg_up_run_days': return p.avg_up_run_days.toFixed(1);
+      case 'n_trades': return p.n_trades;
+      case 'win_rate': return (p.win_rate * 100).toFixed(0) + '%';
+      case 'avg_return_pct': return p.avg_return_pct.toFixed(2) + '%';
+      case 'cagr_pct': return (p.cagr_pct >= 0 ? '+' : '') + p.cagr_pct.toFixed(1) + '%';
+      case 'sharpe': return (p.sharpe >= 0 ? '+' : '') + p.sharpe.toFixed(2);
+      case 'max_drawdown_pct': return p.max_drawdown_pct.toFixed(1) + '%';
+      case 'profit_factor': return (p.profit_factor === null || p.profit_factor === undefined) ? '—' : p.profit_factor.toFixed(2);
+    }
+  }
+  function render() {
+    var sorted = pairs.slice().sort(function (a, b) {
+      var av = a[sortKey], bv = b[sortKey];
+      if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+      return sortDir * (av - bv);
+    });
+    tbody.innerHTML = sorted.map(function (p) {
+      var cls = p.sharpe > 0 ? 'pos' : (p.sharpe < 0 ? 'neg' : '');
+      return '<tr>' +
+        '<td>' + fmtCell(p, 'pair') + '</td>' + '<td>' + fmtCell(p, 'ann_vol') + '</td>' +
+        '<td>' + fmtCell(p, 'avg_up_run_days') + '</td>' + '<td>' + fmtCell(p, 'n_trades') + '</td>' +
+        '<td>' + fmtCell(p, 'win_rate') + '</td>' + '<td>' + fmtCell(p, 'avg_return_pct') + '</td>' +
+        '<td>' + fmtCell(p, 'cagr_pct') + '</td>' + '<td class="' + cls + '">' + fmtCell(p, 'sharpe') + '</td>' +
+        '<td>' + fmtCell(p, 'max_drawdown_pct') + '</td>' + '<td>' + fmtCell(p, 'profit_factor') + '</td></tr>';
+    }).join('');
+  }
+  document.querySelectorAll('#pair-table th[data-key]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var key = th.getAttribute('data-key');
+      sortDir = (sortKey === key) ? -sortDir : 1;
+      sortKey = key;
+      render();
+    });
+  });
+  render();
+})();
+
+// ===========================================================================
+// Part 2 — timeframe x asset-class grid + Monte Carlo
+// ===========================================================================
+function renderGridSection(G, ids) {
+  "use strict";
+  var TFS = G.timeframe_order;
+  var root = getComputedStyle(document.documentElement);
+  function tok(name) { return root.getPropertyValue(name).trim(); }
+  var ACCENT = tok('--accent'), CRIT = tok('--critical'), GOOD = tok('--good'), INK2 = tok('--ink-2'), MUTED = tok('--ink-muted'), CONTEXT = tok('--context');
+
+  function hexToRgb(hex) {
+    hex = hex.trim().replace('#', '');
+    return [parseInt(hex.substr(0, 2), 16), parseInt(hex.substr(2, 2), 16), parseInt(hex.substr(4, 2), 16)];
+  }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function hexToRgba(hex, alpha) {
+    var rgb = hexToRgb(hex);
+    return 'rgba(' + rgb.join(',') + ',' + alpha + ')';
+  }
+  var blueRgb = hexToRgb(ACCENT || '#2a78d6'), redRgb = hexToRgb(CRIT || '#d03b3b'), grayRgb = [201, 200, 193];
+  function sharpeBg(s, maxAbs) {
+    if (s === null || s === undefined || isNaN(s)) return null;
+    var t = maxAbs === 0 ? 0 : Math.max(-1, Math.min(1, s / maxAbs));
+    var rgb = t >= 0
+      ? [lerp(grayRgb[0], blueRgb[0], t), lerp(grayRgb[1], blueRgb[1], t), lerp(grayRgb[2], blueRgb[2], t)]
+      : [lerp(grayRgb[0], redRgb[0], -t), lerp(grayRgb[1], redRgb[1], -t), lerp(grayRgb[2], redRgb[2], -t)];
+    return 'rgb(' + rgb.map(Math.round).join(',') + ')';
+  }
+  function textColorFor(bg) { return bg ? '#ffffff' : MUTED; }
+
+  var allSharpes = G.grid.map(function (r) { return r.sharpe; }).filter(function (v) { return v !== null; });
+  var maxAbsSharpe = Math.max.apply(null, allSharpes.map(Math.abs));
+
+  // ---------- verdict tiles ----------
+  var byTf = {}; G.by_timeframe.forEach(function (r) { byTf[r.timeframe] = r; });
+  var bestClass = G.by_asset_class[0], worstClass = G.by_asset_class[G.by_asset_class.length - 1];
+
+  function tile(label, value, sub, cls) {
+    return '<div class="tile"><div class="label">' + label + '</div>' +
+      '<div class="value ' + (cls || '') + '">' + value + '</div>' +
+      '<div class="sub">' + sub + '</div></div>';
+  }
+  document.getElementById(ids.verdictTiles).innerHTML = [
+    tile('Best timeframe (mean Sharpe)', '1d: ' + (byTf['1d'].sharpe >= 0 ? '+' : '') + byTf['1d'].sharpe.toFixed(2),
+         '4h ' + (byTf['4h'].sharpe >= 0 ? '+' : '') + byTf['4h'].sharpe.toFixed(2) + ' · 30m ' + byTf['30m'].sharpe.toFixed(2) + ' · 15m ' + byTf['15m'].sharpe.toFixed(2),
+         byTf['1d'].sharpe >= 0 ? 'pos' : 'neg'),
+    tile('Worst timeframe', '15m: ' + byTf['15m'].sharpe.toFixed(2), 'degrades monotonically as candles shrink', 'neg'),
+    tile('Vol &harr; Sharpe, pooled', (G.correlations.pooled >= 0 ? '+' : '') + G.correlations.pooled.toFixed(2),
+         'consistent sign across all 4 timeframes', G.correlations.pooled >= 0 ? 'pos' : 'neg'),
+    tile('Best asset class', bestClass.asset_class.replace('_', ' '), 'mean Sharpe ' + (bestClass.sharpe >= 0 ? '+' : '') + bestClass.sharpe.toFixed(2), bestClass.sharpe >= 0 ? 'pos' : 'neg'),
+    tile('Worst asset class', worstClass.asset_class.replace('_', ' '), 'mean Sharpe ' + worstClass.sharpe.toFixed(2), 'neg'),
+    tile('Grid coverage', G.totals.n_ok + ' / ' + G.totals.n_combinations, G.totals.n_assets + ' instruments &times; ' + TFS.length + ' timeframes')
+  ].join('');
+
+  if (ids.corrPooledInline) {
+    document.getElementById(ids.corrPooledInline).textContent = (G.correlations.pooled >= 0 ? '+' : '') + G.correlations.pooled.toFixed(2);
+  }
+
+  // ---------- heatmap ----------
+  var theadHtml = '<thead><tr><th>Instrument</th>' + TFS.map(function (tf) { return '<th>' + tf + '</th>'; }).join('') + '</tr></thead>';
+  var bodyRows = G.heatmap.map(function (row) {
+    var cells = TFS.map(function (tf) {
+      var c = row.cells[tf];
+      if (!c) return '<td><div class="heat-cell empty">&mdash;</div></td>';
+      var bg = sharpeBg(c.sharpe, maxAbsSharpe);
+      return '<td><div class="heat-cell" style="background:' + bg + ';color:' + textColorFor(bg) + '" ' +
+        'title="' + row.asset + ' ' + tf + ': sharpe ' + c.sharpe.toFixed(2) + ', ' + c.n_trades + ' trades, win ' + (c.win_rate * 100).toFixed(0) + '%, CAGR ' + c.cagr_pct.toFixed(1) + '%">' +
+        (c.sharpe >= 0 ? '+' : '') + c.sharpe.toFixed(2) + '</div></td>';
+    }).join('');
+    return '<tr><td class="asset-cell">' + row.asset + ' <span class="chip cls-' + row.asset_class + '">' + row.asset_class.replace('_', ' ') + '</span></td>' + cells + '</tr>';
+  }).join('');
+  document.getElementById(ids.heatmapTable).innerHTML = theadHtml + '<tbody>' + bodyRows + '</tbody>';
+  document.getElementById(ids.heatmapLegend).innerHTML = '<span>color = Sharpe (red = negative, blue = positive, gray = flat) &middot; hover a cell for trades / win rate / CAGR</span>';
+
+  // ---------- Monte Carlo fan charts ----------
+  var mcGrid = document.getElementById(ids.mcGrid);
+  G.curated_mc.forEach(function (c, ci) {
+    var card = document.createElement('div');
+    card.className = 'mc-card';
+    var d = c.detail;
+    var chartId = ids.mcChartPrefix + ci;
+    card.innerHTML =
+      '<div class="mc-card-head"><span class="name">' + c.asset + ' <span class="chip cls-' + c.asset_class + '">' + c.timeframe + '</span></span>' +
+      '<span class="badge-label">' + c.label + '</span></div>' +
+      '<div class="chart-wrap" id="' + chartId + '"></div>' +
+      '<div class="mc-stats">' +
+        '<span>P(profit) <b class="' + (d.p_profit >= 0.5 ? 'pos' : 'neg') + '">' + (d.p_profit * 100).toFixed(0) + '%</b></span>' +
+        '<span>actual Sharpe <b>' + (c.actual_sharpe >= 0 ? '+' : '') + c.actual_sharpe.toFixed(2) + '</b></span>' +
+        '<span>median MC return <b>' + (d.final_return_p50 >= 0 ? '+' : '') + d.final_return_p50.toFixed(1) + '%</b></span>' +
+        '<span>5&ndash;95% return <b>' + d.final_return_p05.toFixed(0) + '% / ' + (d.final_return_p95 >= 0 ? '+' : '') + d.final_return_p95.toFixed(0) + '%</b></span>' +
+      '</div>';
+    mcGrid.appendChild(card);
+
+    var n = d.actual_path.length;
+    var xLabels = d.actual_path.map(function (_, i) { return 'T' + (i + 1); });
+    RC.lineChart(document.getElementById(chartId), {
+      n: n, xLabels: xLabels, height: 220, xTickCount: 4, maxTooltipLines: 6,
+      yFormat: function (v) { return v.toFixed(2); },
+      tooltipTitle: function (i) { return 'Trade ' + (i + 1); },
+      bands: [
+        { lower: d.band_p05, upper: d.band_p95, color: hexToRgba(ACCENT, 0.10) },
+        { lower: d.band_p25, upper: d.band_p75, color: hexToRgba(ACCENT, 0.20) },
+      ],
+      lines: [
+        { label: 'Actual', values: d.actual_path, color: ACCENT, width: 2.25 },
+        { label: 'MC median', values: d.band_p50, color: CONTEXT, width: 1.25, dash: '4 3' },
+      ],
+    });
+  });
+
+  // ---------- compare grids ----------
+  function barCompareCard(title, rows, key, fmt) {
+    var maxv = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[key]) || 0; }).concat([0.0001]));
+    var body = rows.map(function (r, i) {
+      var pct = Math.min(100, Math.abs(r[key]) / maxv * 100);
+      var color = i === 0 ? ACCENT : CONTEXT;
+      return '<div class="bar-row"><span class="name">' + (r._label) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%;background:' + color + '"></span></span>' +
+        '<span class="bar-val">' + fmt(r[key]) + '</span></div>';
+    }).join('');
+    return '<div class="compare-card"><div class="metric-label">' + title + '</div>' + body + '</div>';
+  }
+
+  var tfRows = TFS.map(function (tf) { var r = Object.assign({}, byTf[tf]); r._label = tf; return r; });
+  document.getElementById(ids.tfCompareGrid).innerHTML = [
+    barCompareCard('Sharpe', tfRows, 'sharpe', function (v) { return v.toFixed(2); }),
+    barCompareCard('Win rate', tfRows, 'win_rate', function (v) { return (v * 100).toFixed(0) + '%'; }),
+    barCompareCard('Max drawdown', tfRows, 'max_drawdown_pct', function (v) { return v.toFixed(1) + '%'; }),
+    barCompareCard('Trades / instrument', tfRows, 'n_trades', function (v) { return v.toFixed(0); }),
+  ].join('');
+
+  var classRows = G.by_asset_class.map(function (r) { var c = Object.assign({}, r); c._label = c.asset_class.replace('_', ' '); return c; });
+  document.getElementById(ids.classCompareGrid).innerHTML = [
+    barCompareCard('Sharpe', classRows, 'sharpe', function (v) { return v.toFixed(2); }),
+    barCompareCard('CAGR', classRows, 'cagr_pct', function (v) { return v.toFixed(1) + '%'; }),
+    barCompareCard('Win rate', classRows, 'win_rate', function (v) { return (v * 100).toFixed(0) + '%'; }),
+    barCompareCard('Max drawdown', classRows, 'max_drawdown_pct', function (v) { return v.toFixed(1) + '%'; }),
+  ].join('');
+
+  // ---------- full grid, grouped by timeframe ----------
+  var gridByTfEl = document.getElementById(ids.gridByTf);
+  var COLS = [
+    { key: 'asset', label: 'Asset', align: 'left' },
+    { key: 'asset_class', label: 'Class', align: 'left' },
+    { key: 'ann_vol', label: 'Ann. Vol' },
+    { key: 'n_trades', label: 'Trades' },
+    { key: 'win_rate', label: 'Win Rate' },
+    { key: 'total_return_pct', label: 'Raw Return' },
+    { key: 'cagr_pct', label: 'CAGR (ann.)' },
+    { key: 'sharpe', label: 'Sharpe' },
+    { key: 'mc_p_profit', label: 'MC P(profit)' },
+    { key: 'max_drawdown_pct', label: 'Max DD' },
+  ];
+
+  function gFmt(r, key) {
+    switch (key) {
+      case 'asset': return r.asset;
+      case 'asset_class': return '<span class="chip cls-' + r.asset_class + '">' + r.asset_class.replace('_', ' ') + '</span>';
+      case 'ann_vol': return (r.ann_vol * 100).toFixed(1) + '%';
+      case 'n_trades': return r.n_trades;
+      case 'win_rate': return (r.win_rate * 100).toFixed(0) + '%';
+      case 'total_return_pct': return (r.total_return_pct >= 0 ? '+' : '') + r.total_return_pct.toFixed(1) + '%';
+      case 'cagr_pct': return (r.cagr_pct >= 0 ? '+' : '') + r.cagr_pct.toFixed(1) + '%';
+      case 'sharpe': return (r.sharpe >= 0 ? '+' : '') + r.sharpe.toFixed(2);
+      case 'mc_p_profit': return (r.mc_p_profit === null || r.mc_p_profit === undefined) ? '—' : (r.mc_p_profit * 100).toFixed(0) + '%';
+      case 'max_drawdown_pct': return r.max_drawdown_pct.toFixed(1) + '%';
+    }
+  }
+
+  G.grid_by_timeframe.forEach(function (group, gi) {
+    var wrap = document.createElement('div');
+    wrap.className = 'tf-group';
+    var tableId = ids.tfTablePrefix + gi;
+    wrap.innerHTML =
+      '<div class="tf-group-head"><span class="tf-badge">' + group.timeframe + '</span>' +
+      '<span class="tf-group-sub">' + group.rows.length + ' instruments &middot; sorted by Sharpe</span></div>' +
+      '<div class="table-scroll"><table id="' + tableId + '"><thead><tr>' +
+      COLS.map(function (c) { return '<th data-key="' + c.key + '"' + (c.align === 'left' ? ' style="text-align:left"' : '') + '>' + c.label + '</th>'; }).join('') +
+      '</tr></thead><tbody></tbody></table></div>';
+    gridByTfEl.appendChild(wrap);
+
+    var rows = group.rows.slice();
+    var sortKey = 'sharpe', sortDir = -1;
+    var tbody = wrap.querySelector('tbody');
+
+    function render() {
+      var sorted = rows.slice().sort(function (a, b) {
+        var av = a[sortKey], bv = b[sortKey];
+        if (av === null || av === undefined) return 1;
+        if (bv === null || bv === undefined) return -1;
+        if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+        return sortDir * (av - bv);
+      });
+      tbody.innerHTML = sorted.map(function (r) {
+        var cls = r.sharpe > 0 ? 'pos' : (r.sharpe < 0 ? 'neg' : '');
+        return '<tr>' + COLS.map(function (c) {
+          var extraCls = c.key === 'sharpe' ? ' class="' + cls + '"' : '';
+          return '<td' + extraCls + '>' + gFmt(r, c.key) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+    }
+    wrap.querySelectorAll('th[data-key]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var key = th.getAttribute('data-key');
+        sortDir = (sortKey === key) ? -sortDir : -1;
+        sortKey = key;
+        render();
+      });
+    });
+    render();
+  });
+}
+
+renderGridSection(JSON.parse(document.getElementById('grid-report-data').textContent), {
+  verdictTiles: 'grid-verdict-tiles', corrPooledInline: 'corr-pooled-inline',
+  heatmapTable: 'heatmap-table', heatmapLegend: 'heatmap-legend',
+  mcGrid: 'mc-grid', mcChartPrefix: 'mc-chart-',
+  tfCompareGrid: 'tf-compare-grid', classCompareGrid: 'class-compare-grid',
+  gridByTf: 'grid-by-tf', tfTablePrefix: 'tf-table-',
+});
+
+var _p3raw = document.getElementById('grid-report-data-both');
+if (_p3raw) {
+  renderGridSection(JSON.parse(_p3raw.textContent), {
+    verdictTiles: 'p3-verdict-tiles', corrPooledInline: null,
+    heatmapTable: 'p3-heatmap-table', heatmapLegend: 'p3-heatmap-legend',
+    mcGrid: 'p3-mc-grid', mcChartPrefix: 'p3-mc-chart-',
+    tfCompareGrid: 'p3-tf-compare-grid', classCompareGrid: 'p3-class-compare-grid',
+    gridByTf: 'p3-grid-by-tf', tfTablePrefix: 'p3-tf-table-',
+  });
+}
+
+// ===========================================================================
+// Head-to-head: long-only vs long+short
+// ===========================================================================
+(function () {
+  "use strict";
+  var raw = document.getElementById('headtohead-data');
+  if (!raw) return;
+  var H = JSON.parse(raw.textContent);
+  var root = getComputedStyle(document.documentElement);
+  function tok(name) { return root.getPropertyValue(name).trim(); }
+  var ACCENT = tok('--accent'), CONTEXT = tok('--context'), GOOD = tok('--good'), CRIT = tok('--critical');
+
+  function tile(label, value, sub, cls) {
+    return '<div class="tile"><div class="label">' + label + '</div>' +
+      '<div class="value ' + (cls || '') + '">' + value + '</div>' +
+      '<div class="sub">' + sub + '</div></div>';
+  }
+  var pctHelps = (H.summary.pct_short_helps * 100).toFixed(0);
+  document.getElementById('h2h-tiles').innerHTML = [
+    tile('Short side helped', pctHelps + '%', H.summary.n_short_helps + ' of ' + H.summary.n_total + ' combinations', H.summary.pct_short_helps >= 0.5 ? 'pos' : 'neg'),
+    tile('Mean Sharpe delta', (H.summary.mean_sharpe_delta >= 0 ? '+' : '') + H.summary.mean_sharpe_delta.toFixed(2), 'long+short minus long-only, averaged across all 80', H.summary.mean_sharpe_delta >= 0 ? 'pos' : 'neg'),
+  ].join('');
+  document.getElementById('h2h-inline-stat').textContent =
+    H.summary.n_short_helps + ' of ' + H.summary.n_total + ' (' + pctHelps + '%)';
+
+  function barCompareCard(title, rows, keyA, keyB, fmt) {
+    var maxv = Math.max.apply(null, rows.map(function (r) { return Math.max(Math.abs(r[keyA]) || 0, Math.abs(r[keyB]) || 0); }).concat([0.0001]));
+    function row(name, v, color) {
+      var pct = Math.min(100, Math.abs(v) / maxv * 100);
+      return '<div class="bar-row"><span class="name">' + name + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%;background:' + color + '"></span></span>' +
+        '<span class="bar-val">' + fmt(v) + '</span></div>';
+    }
+    var body = rows.map(function (r) {
+      return row(r._label + ' long', r[keyA], CONTEXT) + row(r._label + ' L+S', r[keyB], ACCENT);
+    }).join('');
+    return '<div class="compare-card"><div class="metric-label">' + title + '</div>' + body + '</div>';
+  }
+
+  var tfRows = H.by_timeframe.map(function (r) { var c = Object.assign({}, r); c._label = c.timeframe; return c; });
+  var classRows = H.by_asset_class.map(function (r) { var c = Object.assign({}, r); c._label = c.asset_class.replace('_', ' '); return c; });
+  document.getElementById('h2h-compare-grid').innerHTML = [
+    barCompareCard('Sharpe by timeframe', tfRows, 'sharpe_long', 'sharpe_both', function (v) { return v.toFixed(2); }),
+    barCompareCard('Sharpe by asset class', classRows, 'sharpe_long', 'sharpe_both', function (v) { return v.toFixed(2); }),
+  ].join('');
+
+  var rows = H.rows;
+  var tbody = document.querySelector('#h2h-table tbody');
+  var sortKey = 'sharpe_delta', sortDir = 1;
+
+  function fmt(r, key) {
+    switch (key) {
+      case 'asset': return r.asset;
+      case 'asset_class': return '<span class="chip cls-' + r.asset_class + '">' + r.asset_class.replace('_', ' ') + '</span>';
+      case 'timeframe': return r.timeframe;
+      case 'sharpe_long': return (r.sharpe_long >= 0 ? '+' : '') + r.sharpe_long.toFixed(2);
+      case 'sharpe_both': return (r.sharpe_both >= 0 ? '+' : '') + r.sharpe_both.toFixed(2);
+      case 'sharpe_delta': return (r.sharpe_delta >= 0 ? '+' : '') + r.sharpe_delta.toFixed(2);
+      case 'cagr_pct_long': return (r.cagr_pct_long >= 0 ? '+' : '') + r.cagr_pct_long.toFixed(1) + '%';
+      case 'cagr_pct_both': return (r.cagr_pct_both >= 0 ? '+' : '') + r.cagr_pct_both.toFixed(1) + '%';
+    }
+  }
+  function render() {
+    var sorted = rows.slice().sort(function (a, b) {
+      var av = a[sortKey], bv = b[sortKey];
+      if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+      return sortDir * (av - bv);
+    });
+    tbody.innerHTML = sorted.map(function (r) {
+      var cls = r.sharpe_delta > 0 ? 'pos' : (r.sharpe_delta < 0 ? 'neg' : '');
+      return '<tr>' +
+        '<td>' + fmt(r, 'asset') + '</td>' + '<td>' + fmt(r, 'asset_class') + '</td>' + '<td>' + fmt(r, 'timeframe') + '</td>' +
+        '<td>' + fmt(r, 'sharpe_long') + '</td>' + '<td>' + fmt(r, 'sharpe_both') + '</td>' +
+        '<td class="' + cls + '">' + fmt(r, 'sharpe_delta') + '</td>' +
+        '<td>' + fmt(r, 'cagr_pct_long') + '</td>' + '<td>' + fmt(r, 'cagr_pct_both') + '</td></tr>';
+    }).join('');
+  }
+  document.querySelectorAll('#h2h-table th[data-key]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var key = th.getAttribute('data-key');
+      sortDir = (sortKey === key) ? -sortDir : 1;
+      sortKey = key;
+      render();
+    });
+  });
+  render();
+})();
+</script>

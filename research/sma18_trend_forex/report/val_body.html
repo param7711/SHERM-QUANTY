@@ -1,0 +1,301 @@
+  <header class="hero">
+    <p class="eyebrow">Research note · SHERM-QUANTY · 16 commodities + 14 crypto · full available daily history</p>
+    <h1>Is the 18-SMA trend edge real, or is it luck?</h1>
+    <div class="rule-line">
+      <b>Entry</b> — close above the 18-period SMA on two consecutive candles → buy at the close of the second.
+      <b>Exit</b> — flat as soon as price touches the SMA18 again.
+      The rule is unchanged from the original hypothesis. What changed is the burden of proof:
+      every number below exists to try to <i>kill</i> this result, not to flatter it.
+    </div>
+    <nav class="nav-links">
+      <a href="#audit">↓ What I found wrong first</a>
+      <a href="#markov">The Markov test ↓</a>
+      <a href="#eras">Eras ↓</a>
+      <a href="#params">Parameter sweep ↓</a>
+      <a href="#costs">Costs ↓</a>
+      <a href="#grid">The grid ↓</a>
+      <a href="#part3">Long + short ↓</a>
+    </nav>
+  </header>
+
+  <section>
+    <div class="tiles" id="val-tiles"></div>
+  </section>
+
+  <section class="panel caveats" id="audit">
+    <h2>Before any result: two bugs I found, one of them in my own validation code</h2>
+    <p style="margin-bottom:4px">You asked me to make sure no bug was faking a result. Two were. Both are fixed,
+      and both are disclosed here rather than quietly patched, because the second one is the more instructive of
+      the two — it was in the code whose entire job was to detect fake results.</p>
+    <ul>
+      <li><b>Bug 1 — intrabar lookahead in the exit rule (in the strategy engine).</b>
+        The exit checked whether bar <i>i</i>'s low/high straddled bar <i>i</i>'s <i>own</i> SMA. But that SMA value
+        only exists once bar <i>i</i> has closed, and the touch it is testing for happens <i>during</i> bar <i>i</i>.
+        A resting stop sitting in the market during bar <i>i</i> can only be at the SMA level finalized at bar
+        <i>i&minus;1</i>'s close. Fixed to use the prior bar's SMA.
+        <br><b>Direction of the error matters:</b> correcting it made results slightly <i>better</i>
+        (GOLD Sharpe +0.60 → +0.63, ETHUSD +0.97 → +1.30, SOLUSD +1.24 → +1.50). The bug was biasing
+        <i>against</i> the strategy, so it was not the source of the edge — but it was still wrong, and everything
+        below is run on the corrected engine.</li>
+      <li><b>Bug 2 — a biased null model, in my own Markov validation code.</b>
+        The first corrected run returned <span class="num">p = 0.000</span> for all 30 assets. That is not a great
+        result, it is a red flag: a null model that nothing can fail is a broken null model. The cause was that I
+        generated each synthetic bar's return and its bar <i>shape</i> (where the high and low sit relative to the
+        close) independently. In real markets those are strongly linked — on gold,
+        <span class="num">corr(return, low/close) = &minus;0.47</span> and
+        <span class="num">corr(return, high/close) = &minus;0.61</span>. Pairing them at random handed up-days the
+        deep lows of down-days, manufacturing SMA touches that cannot physically happen and making the null far
+        too easy to beat.
+        <br><b>Size of the distortion:</b> fixing it moved the synthetic (null) mean Sharpe on GOLD from
+        &minus;0.63 to <span class="num">+0.14</span>, on BTCUSD from &minus;1.15 to &minus;0.10, on NATGAS from
+        &minus;0.88 to &minus;0.14. Every p-value on this page comes from the corrected null, where bar shapes are
+        resampled conditional on the bar's own return bucket. Had I not caught it, this report would have told you
+        the edge was overwhelming on all 30 instruments. It is not.</li>
+      <li><b>How you can tell the fix worked:</b> the corrected null now produces a <i>spread</i> of p-values —
+        PLATINUM at <span class="num">0.644</span>, PALLADIUM at <span class="num">0.160</span>, CORN at
+        <span class="num">0.118</span> all fail to clear it. A null that some assets fail is a null that is
+        actually doing work.</li>
+    </ul>
+    <div style="margin-top:6px">
+      <h3 style="margin-bottom:8px">Engine correctness suite — run live when this page was built</h3>
+      <div id="test-output"></div>
+      <p style="margin-top:8px;font-size:0.84rem">Two of these test different things and it matters which:
+        <code>test_no_lookahead</code> re-runs the strategy on a truncated series and demands the shared prefix be
+        identical — that catches <i>cross-bar</i> leakage (reading bars that have not happened). It does
+        <b>not</b> catch the bug above, and I verified that: the buggy engine passed it at every cut point.
+        <code>test_exit_uses_prior_bar_sma</code> is the one that catches <i>intrabar</i> leakage, and it fails
+        against the pre-fix code on 16 of 19 exits. <code>test_fast_engine_matches_reference</code> proves the
+        fast array engine used for all 30,000 simulations is numerically identical to the audited reference engine
+        — without it, every p-value below would be measuring a different strategy than the one backtested.
+        (<code>test_real_data_sanity</code> picks the first cached daily file it finds, which is a leftover from an
+        earlier equity run; it is a smoke test on arbitrary OHLC data, not part of this universe.)</p>
+    </div>
+  </section>
+
+  <section id="markov" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">The main test · synthetic markets that never existed</p>
+      <h1>Can the rule beat a market built to have no edge in it?</h1>
+      <div class="rule-line">
+        For each instrument I fit a <b>first-order Markov chain</b> to its own daily returns: returns are bucketed
+        into 5 quantile states, a Laplace-smoothed transition matrix is estimated between them, and new price
+        paths are generated by walking that chain and drawing an actual historical return from the landed state's
+        pool. The synthetic series has the <b>same return distribution, same volatility clustering, and same
+        short-run persistence</b> as the real asset — but its structure beyond one step of memory is destroyed.
+        <b>500 such universes per asset, and the strategy is backtested on every one.</b>
+        The p-value is the fraction of synthetic universes where the rule did at least as well as it did on the
+        real one.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Real Sharpe vs. the distribution of synthetic Sharpes</h2>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:var(--context)"></span>500 synthetic universes</span>
+        <span><span class="legend-dot" style="background:var(--accent)"></span>the real market</span>
+      </div>
+    </div>
+    <p style="margin-bottom:12px">Each histogram is one instrument. The grey mass is what the rule earns on markets
+      engineered to contain no exploitable trend beyond one step of memory. The blue line is what it earned on the
+      real thing. The further right of the mass that line sits, the less the result looks like luck — and where the
+      line sits <i>inside</i> the mass, it is luck, and the chart says so.</p>
+    <div class="mc-grid" id="dist-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Result by asset class</h2></div>
+    <div class="compare-grid" id="markov-class-grid"></div>
+    <p style="margin-top:12px">The gap between the two bars in each card is the entire claim: mean real Sharpe
+      against mean Sharpe on synthetic markets fit to the same assets. On crypto the null model <i>loses money</i>
+      on average (mean synthetic Sharpe <span class="num">&minus;0.47</span>) while the real markets pay
+      <span class="num">+1.01</span>. On commodities the gap is real but far narrower, and five of sixteen
+      instruments do not clear significance at all.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Every instrument, both nulls</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">click a header to sort</span>
+    </div>
+    <p style="margin-bottom:10px">The <b>Markov</b> column is the test described above. The <b>shuffle</b> column is
+      a second, blunter null: the same returns in random order, which destroys <i>all</i> serial structure rather
+      than preserving one step of it. Shuffle is the easier test to pass; Markov is the one that matters. An asset
+      that clears both is the strongest case.</p>
+    <div class="table-scroll">
+      <table id="markov-table">
+        <thead>
+          <tr>
+            <th data-key="asset" style="text-align:left">Asset</th>
+            <th data-key="asset_class" style="text-align:left">Class</th>
+            <th data-key="n_bars">Bars</th>
+            <th data-key="real_n_trades">Trades</th>
+            <th data-key="real_sharpe">Real Sharpe</th>
+            <th data-key="markov_synth_mean">Synth mean</th>
+            <th data-key="markov_z">z</th>
+            <th data-key="markov_p">Markov p</th>
+            <th data-key="shuffle_p">Shuffle p</th>
+            <th data-key="verdict" style="text-align:left">Verdict</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="legend-row" id="markov-fdr" style="margin-top:12px"></div>
+  </section>
+
+  <section id="eras" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">Regime robustness · non-overlapping windows</p>
+      <h1>Does it survive in periods that share no data with each other?</h1>
+      <div class="rule-line">
+        History is cut into <b>six non-overlapping five-year eras</b> and the strategy is re-run from scratch
+        inside each one — no equity, no SMA state, and no information crosses an era boundary. An edge that is
+        one lucky regime dressed up as a strategy shows up here as a single era carrying everything.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Sharpe by instrument &times; era</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">blank = not enough history in that era</span>
+    </div>
+    <div class="table-scroll">
+      <table id="era-heatmap" class="heatmap-tbl"></table>
+    </div>
+    <div class="legend-row" id="era-legend" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Each era on its own</h2></div>
+    <div class="compare-grid" id="era-compare"></div>
+    <p style="margin-top:12px" id="era-prose"></p>
+  </section>
+
+  <section id="params" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">Curve-fit check</p>
+      <h1>Is there anything special about the number 18?</h1>
+      <div class="rule-line">
+        If 18 is the only SMA length that pays, the result is an artifact of someone trying lengths until one
+        worked. If performance sits on a <b>broad plateau</b> across neighbouring lengths, the effect belongs to
+        the market, not to the parameter. Every length from <b>5 to 60</b> is swept on all 30 instruments.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Mean Sharpe across SMA lengths 5–60</h2>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:var(--accent)"></span>crypto</span>
+        <span><span class="legend-dot" style="background:#128a5e"></span>commodity</span>
+      </div>
+    </div>
+    <div class="chart-wrap" id="sweepChart"></div>
+    <div class="tiles" id="param-tiles" style="margin-top:14px"></div>
+    <p style="margin-top:12px">This is the cleanest anti-curve-fit evidence on the page. SMA-18 is
+      <b>never the best length on any of the 30 instruments</b>, and its median rank is 21st out of 56. If the
+      result were fitted, 18 would sit on a spike. It sits on a plateau — which also means the original hypothesis
+      was not precisely right about 18 so much as approximately right about "a medium-length moving average."</p>
+  </section>
+
+  <section id="costs" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">The test most backtests fail</p>
+      <h1>Does it survive being charged to trade?</h1>
+      <div class="rule-line">
+        A round-trip cost is charged on every single trade, swept from <b>0 to 50 basis points</b>. An edge that
+        dies at 5bps was never an edge — it was the bid/ask spread being counted as profit.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Mean Sharpe vs. round-trip cost</h2>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:var(--accent)"></span>crypto</span>
+        <span><span class="legend-dot" style="background:#128a5e"></span>commodity</span>
+      </div>
+    </div>
+    <div class="chart-wrap" id="costChart"></div>
+    <div class="tiles" id="cost-tiles" style="margin-top:14px"></div>
+    <p style="margin-top:12px">The two classes separate sharply here, and this is the practical finding of the
+      whole study: <b>commodities do not survive realistic costs</b> — mean Sharpe falls from +0.29 gross to +0.13
+      at 20bps and goes negative before 50bps. <b>Crypto barely notices</b> (+1.01 → +0.85 at 50bps), because the
+      trades are large enough relative to cost that a half-percent round trip is noise. Whatever the statistical
+      verdict, a commodity implementation of this rule lives or dies on execution quality.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Breakeven cost per instrument</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">click a header to sort</span>
+    </div>
+    <div class="table-scroll">
+      <table id="cost-table">
+        <thead>
+          <tr>
+            <th data-key="asset" style="text-align:left">Asset</th>
+            <th data-key="asset_class" style="text-align:left">Class</th>
+            <th data-key="n_trades">Trades</th>
+            <th data-key="sharpe_0">Sharpe @0bps</th>
+            <th data-key="sharpe_10">@10bps</th>
+            <th data-key="sharpe_20">@20bps</th>
+            <th data-key="breakeven_bps">Breakeven</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel caveats" id="verdict-panel">
+    <h2>The verdict, stated as carefully as the evidence allows</h2>
+    <ul>
+      <li><b>The crypto result is not luck, and that conclusion is robust.</b> All 14 crypto instruments beat the
+        i.i.d. shuffle and 14/14 beat the Markov null, 13 of them at <span class="num">p = 0.000</span> —
+        meaning not one of 500 synthetic universes matched the real result. It survives Benjamini-Hochberg
+        correction, every testable era, the full parameter plateau, and 50bps of cost.</li>
+      <li><b>The commodity result is real but much weaker, and five instruments fail outright.</b>
+        11 of 16 clear the Markov null; PLATINUM (<span class="num">p=0.644</span>), PALLADIUM
+        (<span class="num">0.160</span>), CORN (<span class="num">0.118</span>), COFFEE
+        (<span class="num">0.076</span>) and WHEAT (<span class="num">0.070</span>) do not. Combined with the cost
+        result, the honest reading is that the commodity edge exists statistically but may not exist
+        economically.</li>
+      <li><b>The most important caveat is the one the crypto result cannot escape: crypto has almost no history.</b>
+        Most of these coins have 2 testable eras, several have fewer. "Positive in every era" means something very
+        different for GOLD (26 years, 5 eras) than for AVAXUSD (~6 years, 2 eras). The Markov test partly
+        compensates — it generates 500 alternative histories rather than relying on the one we got — but it
+        cannot manufacture regimes the asset never lived through. <b>No crypto instrument here has traded through
+        a decade-long bear market, because none has existed for one.</b></li>
+      <li><b>Crypto's daily numbers still contain a directional bet no test here removes.</b> The rule is long-only
+        and crypto rose enormously over the sample. The Markov null does control for this — the synthetic series
+        inherit the same drift, and the rule still loses money on them (mean synthetic Sharpe
+        <span class="num">&minus;0.47</span>) — which is genuine evidence the timing adds value beyond the drift.
+        But no buy-and-hold benchmark is computed, so this page does not tell you whether the rule beats simply
+        holding the asset.</li>
+      <li><b>Thirty simultaneous tests inflate false positives, which is why FDR correction is applied.</b>
+        At p&lt;0.05 across 30 assets you would expect ~1.5 false positives by chance alone. Benjamini-Hochberg at
+        5% FDR reduces 25 significant to <b>22</b>. That correction is already reflected in the headline tile.</li>
+      <li><b>The Markov null is first-order, and that is a real limitation.</b> It preserves one step of memory and
+        volatility clustering, but not longer-horizon structure, regime switching, or cross-asset correlation.
+        A higher-order or regime-switching null would be a harder test, and some of the marginal commodities
+        (COPPER at <span class="num">0.048</span>, NATGAS at <span class="num">0.040</span>, BRENT at
+        <span class="num">0.032</span>) would likely not survive it. Treat p-values near 0.05 as unresolved rather
+        than as passes.</li>
+      <li><b>Assets are not independent tests.</b> BRENT and CRUDE are nearly the same instrument; so are GOLD and
+        SILVER, and most large-cap crypto trades as one correlated bloc. The effective number of independent
+        experiments here is far below 30, which means even the FDR-corrected count is optimistic.</li>
+      <li><b>Costs are modeled as a flat per-trade haircut, not as realistic execution.</b> No slippage, no market
+        impact, no funding, no borrow. The "touch" exit fills exactly at the SMA, which assumes a resting order
+        always gets hit at its price — in a fast move it would not.</li>
+      <li><b>Nothing here is out-of-sample in the strict sense.</b> The era splits and the Markov test are the
+        closest substitutes, and they are good ones, but the rule was specified in advance by you rather than
+        discovered by search, which is what makes that acceptable. Had I searched for this rule in this data, none
+        of these p-values would mean anything.</li>
+    </ul>
+  </section>
