@@ -84,6 +84,11 @@ def load_bars(name: str, ticker: str, timeframe: str) -> pd.DataFrame:
                 {"open": "first", "high": "max", "low": "min", "close": "last"}
             ).dropna()
 
+    elif timeframe == "1h":
+        raw = yf.download(ticker, period="730d", interval="1h",
+                           progress=False, auto_adjust=True)
+        df = _flatten_yf(raw) if raw is not None and not raw.empty else pd.DataFrame()
+
     elif timeframe in ("15m", "30m"):
         raw = yf.download(ticker, period="60d", interval=timeframe,
                            progress=False, auto_adjust=True)

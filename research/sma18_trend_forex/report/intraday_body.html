@@ -1,0 +1,65 @@
+  <section id="liquidity-intraday" style="padding-top:8px">
+    <header class="hero">
+      <p class="eyebrow">Follow-up · does liquidity matter more where costs bite hardest?</p>
+      <h1>Liquidity vs. result — 15m, 30m and 1h only</h1>
+      <div class="rule-line">
+        Same rank correlation as the daily liquidity test above (median daily notional USD traded,
+        excluding the six commodities with broken Yahoo volume), computed instead against the
+        <b>15m, 30m and 1h</b> backtests. This is the timeframe range where the liquidity story
+        should matter most, if it matters at all: a rule trading many times a day is far more
+        exposed to spread and depth than one holding for a week.
+      </div>
+    </header>
+  </section>
+
+  <section class="panel caveats">
+    <h2>Why this is a weaker test than the daily one — read before the numbers</h2>
+    <ul>
+      <li><b>15m and 30m carry ~60 calendar days of data; 1h carries ~730</b> (yfinance hard caps,
+        same limit noted in the grid section). A Sharpe computed on 60 days is extremely noisy, and
+        <b>none of these three timeframes has a Markov p-value behind it</b> — there isn't enough
+        history to fit a null model to. This section correlates liquidity against a noisy point
+        estimate, not against an established edge the way the daily section does.</li>
+      <li><b>Liquidity itself is measured from daily volume</b>, not from anything at 15m/30m/1h.
+        It's a reasonable stand-in for how deep an instrument generally is, but it says nothing
+        about intraday spread specifically.</li>
+      <li><b>Same six commodities excluded for broken volume data</b> (SILVER, PLATINUM, PALLADIUM,
+        COPPER, COFFEE, COTTON) — leaving 10 commodities and 14 crypto, small enough that one
+        instrument can move a correlation materially.</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Rank correlation, liquidity vs. Sharpe, by timeframe</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">1d column repeated from the main liquidity test for reference</span>
+    </div>
+    <div class="chart-wrap" id="intraCorrChart"></div>
+    <p style="margin-top:12px" id="intra-verdict"></p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>More-liquid half vs. less-liquid half, by timeframe</h2></div>
+    <div class="compare-grid" id="intra-tiers"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Every instrument, 15m / 30m / 1h</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">click a header to sort</span>
+    </div>
+    <div class="table-scroll">
+      <table id="intra-table">
+        <thead><tr>
+          <th data-key="asset" style="text-align:left">Asset</th>
+          <th data-key="asset_class" style="text-align:left">Class</th>
+          <th data-key="timeframe">TF</th>
+          <th data-key="median_dollar_vol">$Vol/day</th>
+          <th data-key="sharpe">Sharpe</th>
+          <th data-key="n_trades">Trades</th>
+          <th data-key="win_rate">Win rate</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>

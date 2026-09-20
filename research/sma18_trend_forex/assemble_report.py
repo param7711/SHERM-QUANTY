@@ -18,6 +18,8 @@ val_js     = open(f"{SP}/val_js.js").read()
 hist_js    = open(f"{SP}/rc_histogram.js").read()
 extra_body = open(f"{SP}/extra_body.html").read()
 extra_js   = open(f"{SP}/extra_js.js").read()
+intraday_body = open(f"{SP}/intraday_body.html").read()
+intraday_js   = open(f"{SP}/intraday_js.js").read()
 
 # --- 1. extend the chart library -------------------------------------------
 rc_lib = rc_lib.replace(
@@ -141,6 +143,7 @@ payloads = {
     "validation-data": rd("validation_report_data.json"),
     "projection-data": rd("mc_projection.json"),
     "liquidity-data": rd("liquidity_test.json"),
+    "intraday-liquidity-data": rd("intraday_liquidity.json"),
     "grid-report-data": rd("grid_report_data.json"),
     "grid-report-data-both": rd("grid_report_data_both.json"),
     "headtohead-data": rd("headtohead_data.json"),
@@ -152,12 +155,14 @@ for k, v in payloads.items():
 
 _vp = '<section class="panel caveats" id="verdict-panel">'
 assert _vp in val_body, "verdict panel anchor missing"
-val_body = val_body.replace(_vp, extra_body + "\n" + _vp, 1)
+# intraday liquidity section goes right after the daily liquidity section
+# (which extra_body ends with) and before the closing verdict.
+val_body = val_body.replace(_vp, extra_body + "\n" + intraday_body + "\n" + _vp, 1)
 
 html = (
     css + "\n\n<div class=\"wrap\">\n\n" + val_body + "\n\n" + body_rest + "\n\n" + footer + "\n\n"
     + "\n".join(f'<script id="{k}" type="application/json">{v}</script>' for k, v in payloads.items())
-    + "\n\n<script>\n" + rc_lib + "\n\n" + val_js + "\n" + extra_js + "\n" + grid_js + "\n</script>\n"
+    + "\n\n<script>\n" + rc_lib + "\n\n" + val_js + "\n" + extra_js + "\n" + intraday_js + "\n" + grid_js + "\n</script>\n"
 )
 
 dest = os.path.join(SP, "validation_report.html")
