@@ -39,3 +39,5 @@ research/sma18_trend_forex/outputs/mc_paths_both.json
 research/sma18_trend_forex/outputs/headtohead_data.json
 research/sma18_trend_forex/report/validation_report.html
 research/sma18_trend_forex/data/1d_volume/
+research/sma18_trend_forex/data/15m_cb/
+research/sma18_trend_forex/data/30m_cb/
