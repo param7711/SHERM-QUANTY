@@ -32,6 +32,11 @@ OUT_DIR = os.path.join(HERE, "outputs")
 N_ERAS = 3          # split each instrument's history into 3 non-overlapping chunks
 MIN_TRADES_ERA = 15
 
+# Scoped to 6 crypto instruments per user request (was all 14) -- matches
+# fetch_coinbase_intraday.py's SELECTED_CRYPTO exactly, and is the only
+# universe with a real multi-year intraday feed at all.
+SELECTED_CRYPTO = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "ADAUSD", "DOGEUSD"]
+
 
 def _sanitize(o):
     if isinstance(o, float):
@@ -43,19 +48,27 @@ def _sanitize(o):
     return o
 
 
+def _resample(df, rule):
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    if "volume" in df.columns:
+        agg["volume"] = "sum"
+    return df.resample(rule).agg(agg).dropna(subset=["open", "high", "low", "close"])
+
+
 def _load(tf, name):
-    """Deep sample. 15m/30m/1h are read directly from the Coinbase cache;
-    4h has no native candle there, so it's built by resampling the deep 1h
-    data -- more real history behind it than a separately-capped fetch
-    could ever give, since it inherits 1h's full multi-year span."""
+    """Deep sample. 15m and 1h are the only granularities Coinbase Exchange
+    actually serves (confirmed directly: granularity=1800 for 30m returns
+    HTTP 400 "Unsupported granularity" -- its supported set is exactly
+    1m/5m/15m/1h/6h/1d). 30m is derived by resampling the deep 15m data;
+    4h is derived by resampling the deep 1h data. Both inherit their
+    source's full multi-year span rather than needing a separately-capped
+    fetch -- there's no native candle to fetch even if there were time."""
+    if tf == "30m":
+        base = _load("15m", name)
+        return _resample(base, "30min") if base is not None and len(base) >= 4 else None
     if tf == "4h":
-        h1 = _load("1h", name)
-        if h1 is None or len(h1) < 8:
-            return None
-        agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
-        if "volume" in h1.columns:
-            agg["volume"] = "sum"
-        return h1.resample("4h").agg(agg).dropna(subset=["open", "high", "low", "close"])
+        base = _load("1h", name)
+        return _resample(base, "4h") if base is not None and len(base) >= 8 else None
     p = os.path.join(HERE, "data", f"{tf}_cb", f"{name}.parquet")
     return pd.read_parquet(p) if os.path.exists(p) else None
 
@@ -160,7 +173,7 @@ def main(n_sims=300):
     rng = np.random.default_rng(20260920)
     rows, eras, markov = [], [], []
     for tf in ("15m", "30m", "1h", "4h"):
-        for name in UNIVERSE:
+        for name in SELECTED_CRYPTO:
             deep = _load(tf, name)
             if deep is None or len(deep) < 500:
                 continue

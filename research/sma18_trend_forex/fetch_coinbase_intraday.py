@@ -20,11 +20,12 @@ Endpoint: GET /products/{id}/candles?granularity={sec}&start=&end=
   - returns [time, low, high, open, close, volume], newest first
 
 Run: python fetch_coinbase_intraday.py [years]
-Writes: data/15m_cb/{ASSET}.parquet, data/30m_cb/{ASSET}.parquet,
-        data/1h_cb/{ASSET}.parquet
-(4h is not fetched separately -- deep_intraday_validation.py derives it by
-resampling the deep 1h data, the same way the original study built 4h from
-yfinance's 1h feed.)
+Writes: data/15m_cb/{ASSET}.parquet, data/1h_cb/{ASSET}.parquet
+(30m and 4h are not fetched -- neither exists as a native Coinbase Exchange
+granularity for 30m, and there's no need for 4h either. deep_intraday_
+validation.py derives both by resampling: 30m from the deep 15m data, 4h
+from the deep 1h data -- the same construction the original study used to
+build 4h from yfinance's 1h feed.)
 """
 
 import os, sys, time, warnings
@@ -38,15 +39,24 @@ from universe import UNIVERSE
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = "https://api.exchange.coinbase.com"
-GRAN = {"15m": 900, "30m": 1800, "1h": 3600}
+GRAN = {"15m": 900, "1h": 3600}
+# Coinbase Exchange has no native 30m candle -- its supported granularities
+# are exactly 60/300/900/3600/21600/86400s (1m/5m/15m/1h/6h/1d). Fetching
+# granularity=1800 returns HTTP 400 "Unsupported granularity" (confirmed
+# directly). 30m is derived by resampling the deep 15m data instead --
+# see deep_intraday_validation.py -- which needs no extra API calls at all.
 MAX_CANDLES = 300
 SLEEP = 0.35   # Coinbase Exchange public rate limit is ~3 req/sec
 
+# Scoped to 6 crypto instruments per user request (was all 14) -- these are
+# also the 6 with the deepest market cap/liquidity in the universe, and
+# happened to already be the first 6 fetched, so narrowing here wastes no
+# prior work.
+SELECTED_CRYPTO = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "ADAUSD", "DOGEUSD"]
+
 CB_PRODUCT = {  # UNIVERSE key -> Coinbase Exchange product id
     "BTCUSD": "BTC-USD", "ETHUSD": "ETH-USD", "SOLUSD": "SOL-USD", "XRPUSD": "XRP-USD",
-    "ADAUSD": "ADA-USD", "DOGEUSD": "DOGE-USD", "LTCUSD": "LTC-USD", "BCHUSD": "BCH-USD",
-    "LINKUSD": "LINK-USD", "AVAXUSD": "AVAX-USD", "DOTUSD": "DOT-USD", "XLMUSD": "XLM-USD",
-    "ETCUSD": "ETC-USD", "ATOMUSD": "ATOM-USD",
+    "ADAUSD": "ADA-USD", "DOGEUSD": "DOGE-USD",
 }
 
 
@@ -93,7 +103,7 @@ def main(years=3):
     for tf, gran in GRAN.items():
         out_dir = os.path.join(HERE, "data", f"{tf}_cb")
         os.makedirs(out_dir, exist_ok=True)
-        for name in UNIVERSE:
+        for name in SELECTED_CRYPTO:
             product = CB_PRODUCT.get(name)
             if not product:
                 continue
