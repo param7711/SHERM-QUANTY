@@ -15,24 +15,64 @@
   var byTf = {};
   I.correlations.forEach(function (c) { byTf[c.timeframe] = c; });
   byTf['1d'] = I.daily_reference;
+  var tfLabel = { '15m': '15 min', '30m': '30 min', '1h': '1 hour', '1d': 'daily (reference)' };
 
-  // ---- grouped bar chart, via three lineChart-style series on a categorical x
-  var series = {
-    pooled: order.map(function (tf) { return byTf[tf].pooled ? byTf[tf].pooled.spearman : null; }),
-    COMMODITY: order.map(function (tf) { return (byTf[tf].by_class.COMMODITY || {}).spearman; }),
-    CRYPTO: order.map(function (tf) { return (byTf[tf].by_class.CRYPTO || {}).spearman; }),
-  };
-  RC.lineChart(document.getElementById('intraCorrChart'), {
-    n: order.length, height: 240,
-    lines: [
-      { label: 'pooled (both classes)', color: MUTED, width: 2, values: series.pooled },
-      { label: 'commodity', color: CLS_COLOR.COMMODITY, width: 2.5, values: series.COMMODITY },
-      { label: 'crypto', color: CLS_COLOR.CRYPTO, width: 2.5, values: series.CRYPTO },
-    ],
-    xLabels: order, xTickCount: order.length - 1,
-    yFormat: function (v) { return v.toFixed(2); },
-    tooltipTitle: function (i) { return order[i] + (order[i] === '1d' ? ' (daily, established edge)' : ' (noisy, no p-value)'); },
-    zeroLine: true
+  // ---- one scatter per timeframe, same visual as the daily liquidity scatter
+  document.getElementById('intra-scatter-grid').innerHTML = order.map(function (tf, i) {
+    var c = byTf[tf];
+    return '<div class="mc-card">' +
+      '<div class="mc-card-head"><span class="name">' + tfLabel[tf] + '</span>' +
+        (tf === '1d' ? '<span class="badge-label">reference</span>' : '') + '</div>' +
+      '<div class="chart-wrap" id="intra-scatter-' + i + '"></div>' +
+      '<div class="mc-stats">' +
+        '<span>commodity r<sub>s</sub> <b class="' + sgn((c.by_class.COMMODITY || {}).spearman) + '">' +
+          ((c.by_class.COMMODITY || {}).spearman || 0).toFixed(2) + '</b></span>' +
+        '<span>crypto r<sub>s</sub> <b class="' + sgn((c.by_class.CRYPTO || {}).spearman) + '">' +
+          ((c.by_class.CRYPTO || {}).spearman || 0).toFixed(2) + '</b></span>' +
+      '</div></div>';
+  }).join('');
+
+  document.getElementById('intra-corr-legend').innerHTML =
+    '<span><span class="legend-dot" style="background:' + CLS_COLOR.COMMODITY + '"></span>commodity</span>' +
+    '<span><span class="legend-dot" style="background:' + CLS_COLOR.CRYPTO + '"></span>crypto</span>' +
+    '<span>r<sub>s</sub> = Spearman rank correlation, liquidity vs. Sharpe, within that class</span>';
+
+  var dailyPts = null;
+  try { dailyPts = JSON.parse(document.getElementById('liquidity-data').textContent).per_asset; } catch (e) {}
+
+  order.forEach(function (tf, i) {
+    var pts;
+    if (tf === '1d') {
+      pts = (dailyPts || []).filter(function (r) { return !r.volume_unreliable; })
+        .map(function (r) {
+          return { x: r.log10_dollar_vol, y: r.real_sharpe, asset_class: r.asset_class,
+                   asset: r.asset, n_trades: r.real_n_trades };
+        });
+    } else {
+      pts = I.per_row.filter(function (r) { return r.timeframe === tf; })
+        .map(function (r) {
+          return { x: r.log10_dollar_vol, y: r.sharpe, asset_class: r.asset_class,
+                   asset: r.asset, n_trades: r.n_trades };
+        });
+    }
+    RC.scatterChart(document.getElementById('intra-scatter-' + i), {
+      xLabel: 'median notional USD traded per day (log scale)',
+      yLabel: 'Sharpe',
+      xFormat: function (v) {
+        var d = Math.pow(10, v);
+        return d >= 1e9 ? '$' + (d / 1e9).toFixed(0) + 'B' : '$' + (d / 1e6).toFixed(0) + 'M';
+      },
+      yFormat: function (v) { return v.toFixed(1); },
+      points: pts.map(function (r) {
+        return {
+          x: r.x, y: r.y, color: CLS_COLOR[r.asset_class] || CONTEXT,
+          tooltip: '<div style="font-weight:600">' + r.asset + '</div>' +
+            '<div>$' + (Math.pow(10, r.x) / 1e9).toFixed(2) + 'B/day</div>' +
+            '<div>Sharpe ' + r.y.toFixed(2) + '</div>' +
+            '<div>' + r.n_trades + ' trades</div>'
+        };
+      })
+    });
   });
 
   function fmtC(c) { return !c ? 'n/a' : (c.spearman >= 0 ? '+' : '') + c.spearman.toFixed(2) + ' (n=' + c.n + ')'; }
@@ -56,7 +96,6 @@
     'the daily result &mdash; four independent looks pointing the same way.';
 
   // ---- tiers ----------------------------------------------------------------
-  var tfLabel = { '15m': '15 min', '30m': '30 min', '1h': '1 hour' };
   document.getElementById('intra-tiers').innerHTML = I.tiers.map(function (t) {
     return '<div class="compare-card">' +
       '<span class="metric-label">' + (tfLabel[t.timeframe] || t.timeframe) + ' &middot; ' +

@@ -31,10 +31,11 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>Rank correlation, liquidity vs. Sharpe, by timeframe</h2>
-      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">1d column repeated from the main liquidity test for reference</span>
+      <h2>Liquidity against the result — one scatter per timeframe</h2>
+      <span style="font-size:0.75rem;color:var(--ink-muted);font-family:var(--mono)">same layout as the daily liquidity scatter above, for direct comparison</span>
     </div>
-    <div class="chart-wrap" id="intraCorrChart"></div>
+    <div class="mc-grid" id="intra-scatter-grid"></div>
+    <div class="legend-row" id="intra-corr-legend" style="margin-top:12px"></div>
     <p style="margin-top:12px" id="intra-verdict"></p>
   </section>
 
