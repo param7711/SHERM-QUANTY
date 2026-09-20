@@ -20,7 +20,11 @@ Endpoint: GET /products/{id}/candles?granularity={sec}&start=&end=
   - returns [time, low, high, open, close, volume], newest first
 
 Run: python fetch_coinbase_intraday.py [years]
-Writes: data/15m_cb/{ASSET}.parquet, data/30m_cb/{ASSET}.parquet
+Writes: data/15m_cb/{ASSET}.parquet, data/30m_cb/{ASSET}.parquet,
+        data/1h_cb/{ASSET}.parquet
+(4h is not fetched separately -- deep_intraday_validation.py derives it by
+resampling the deep 1h data, the same way the original study built 4h from
+yfinance's 1h feed.)
 """
 
 import os, sys, time, warnings
@@ -34,7 +38,7 @@ from universe import UNIVERSE
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = "https://api.exchange.coinbase.com"
-GRAN = {"15m": 900, "30m": 1800}
+GRAN = {"15m": 900, "30m": 1800, "1h": 3600}
 MAX_CANDLES = 300
 SLEEP = 0.35   # Coinbase Exchange public rate limit is ~3 req/sec
 

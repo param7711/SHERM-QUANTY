@@ -1,11 +1,17 @@
 """
-Re-runs the full validation stack on crypto 15m/30m using the multi-year
-Coinbase Exchange history (fetch_coinbase_intraday.py) instead of yfinance's
-~60-day sample -- the direct answer to "the grid shows 15m/30m as the best
-timeframe, but that's from 60 days of data; what happens with a real sample?"
+Re-runs the full validation stack on crypto 15m/30m/1h/4h using the
+multi-year Coinbase Exchange history (fetch_coinbase_intraday.py) instead
+of yfinance's ~60-day (15m/30m) or ~730-day (1h/4h) samples -- the direct
+answer to "the grid shows short timeframes as the best, but that's from a
+small sample; what happens with a real one?"
 
-This mirrors markov_validation.py + era_splits.py, but scoped to crypto only
-(commodities have no free multi-year intraday source) and to 15m/30m.
+This mirrors markov_validation.py + era_splits.py, but scoped to crypto
+only (commodities have no free multi-year intraday source) and to the four
+intraday timeframes. 15m/30m/1h are fetched directly; 4h is DERIVED by
+resampling the deep 1h data (open=first, high=max, low=min, close=last),
+the same construction run_grid.py uses to build 4h from yfinance's 1h feed
+-- there is no native 4h candle on the exchange, and there does not need
+to be one.
 
 Outputs: outputs/deep_intraday_validation.json
 Run: python deep_intraday_validation.py [n_sims]
@@ -38,12 +44,25 @@ def _sanitize(o):
 
 
 def _load(tf, name):
+    """Deep sample. 15m/30m/1h are read directly from the Coinbase cache;
+    4h has no native candle there, so it's built by resampling the deep 1h
+    data -- more real history behind it than a separately-capped fetch
+    could ever give, since it inherits 1h's full multi-year span."""
+    if tf == "4h":
+        h1 = _load("1h", name)
+        if h1 is None or len(h1) < 8:
+            return None
+        agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+        if "volume" in h1.columns:
+            agg["volume"] = "sum"
+        return h1.resample("4h").agg(agg).dropna(subset=["open", "high", "low", "close"])
     p = os.path.join(HERE, "data", f"{tf}_cb", f"{name}.parquet")
     return pd.read_parquet(p) if os.path.exists(p) else None
 
 
 def _load_shallow(tf, name):
-    """The original ~60-day yfinance sample, for the side-by-side comparison."""
+    """The original yfinance sample for that timeframe (60-day cap on
+    15m/30m, ~730-day cap on 1h/4h), for the side-by-side comparison."""
     p = os.path.join(HERE, "data", tf, f"{name}.parquet")
     if not os.path.exists(p):
         return None
@@ -140,7 +159,7 @@ def markov_test(df, n_sims, rng):
 def main(n_sims=300):
     rng = np.random.default_rng(20260920)
     rows, eras, markov = [], [], []
-    for tf in ("15m", "30m"):
+    for tf in ("15m", "30m", "1h", "4h"):
         for name in UNIVERSE:
             deep = _load(tf, name)
             if deep is None or len(deep) < 500:
@@ -184,10 +203,17 @@ def main(n_sims=300):
             "n_instruments_tested": int(df_rows[["asset", "timeframe"]].drop_duplicates().shape[0]),
             "n_markov_sig_05": int((df_markov["markov_p"] < 0.05).sum()) if not df_markov.empty else 0,
             "n_markov_total": int(len(df_markov)),
-            "mean_deep_sharpe_15m": round(float(df_rows[df_rows.timeframe == "15m"]["deep_sharpe"].mean()), 3) if not df_rows.empty else None,
-            "mean_deep_sharpe_30m": round(float(df_rows[df_rows.timeframe == "30m"]["deep_sharpe"].mean()), 3) if not df_rows.empty else None,
-            "mean_shallow_sharpe_15m": round(float(df_rows[df_rows.timeframe == "15m"]["shallow_sharpe"].mean()), 3) if not df_rows.empty else None,
-            "mean_shallow_sharpe_30m": round(float(df_rows[df_rows.timeframe == "30m"]["shallow_sharpe"].mean()), 3) if not df_rows.empty else None,
+            "by_timeframe": [
+                {
+                    "timeframe": tf,
+                    "n": int(len(sub)),
+                    "mean_deep_sharpe": round(float(sub["deep_sharpe"].mean()), 3),
+                    "mean_shallow_sharpe": round(float(sub["shallow_sharpe"].mean()), 3) if sub["shallow_sharpe"].notna().any() else None,
+                    "mean_deep_days": round(float(sub["deep_days"].mean()), 0),
+                    "mean_shallow_days": round(float(sub["shallow_days"].mean()), 0) if sub["shallow_days"].notna().any() else None,
+                }
+                for tf, sub in df_rows.groupby("timeframe")
+            ] if not df_rows.empty else [],
         },
     }
     with open(os.path.join(OUT_DIR, "deep_intraday_validation.json"), "w") as f:
@@ -195,8 +221,9 @@ def main(n_sims=300):
 
     s = payload["summary"]
     print(f"\n=== Deep-sample crypto intraday: summary ===")
-    print(f"  15m mean Sharpe -- deep sample: {s['mean_deep_sharpe_15m']}   shallow (60d) sample: {s['mean_shallow_sharpe_15m']}")
-    print(f"  30m mean Sharpe -- deep sample: {s['mean_deep_sharpe_30m']}   shallow (60d) sample: {s['mean_shallow_sharpe_30m']}")
+    for row in s["by_timeframe"]:
+        print(f"  {row['timeframe']:4s} mean Sharpe -- deep ({row['mean_deep_days']:.0f}d): {row['mean_deep_sharpe']:+.2f}   "
+              f"shallow ({row['mean_shallow_days'] or 0:.0f}d): {row['mean_shallow_sharpe']}")
     print(f"  Markov test: {s['n_markov_sig_05']}/{s['n_markov_total']} significant at p<0.05")
     print(f"\nwrote {os.path.join(OUT_DIR, 'deep_intraday_validation.json')}")
 
